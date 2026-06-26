@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description"
+    content="FinTrack — Personal finance dashboard with tithe-first waterfall budgeting, multi-currency support, and AI advisor.">
+  <title>FinTrack — Personal Finance Assistant</title>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+  <div id="app">
+
+    <!-- ═══════════ SETUP SCREEN ═══════════ -->
+    <div id="s-setup" style="display:flex;flex-direction:column;flex:1;overflow:hidden;min-height:0">
+      <div class="setup-inner" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">
+
+        <div class="setup-logo">
+          <div class="setup-logo-dot"></div>FinTrack — Personal Finance
+        </div>
+        <div class="setup-h">Your money.<br>Your rules.</div>
+        <div class="setup-sub">
+          Set your base currency below. Your 8 income sources are ready. You can add your expected monthly amounts
+          now, or just leave them at 0 and log income as it comes in — the app will calculate everything automatically.
+        </div>
+
+        <!-- Waterfall preview -->
+        <div class="wf-box">
+          <div class="wf-box-t">Your waterfall — applied automatically to every income you log</div>
+          <div class="wf-step"><span>✝️ Tithe</span><span class="wf-step-pct">10% of gross</span></div>
+          <div class="wf-step"><span>🆘 Emergency fund</span><span class="wf-step-pct">10% of remaining 90%</span></div>
+          <div class="wf-step"><span>📈 Invest</span><span class="wf-step-pct">40% of remainder</span></div>
+          <div class="wf-step"><span>🎁 Give</span><span class="wf-step-pct">10% of remainder</span></div>
+          <div class="wf-step"><span>💰 Save</span><span class="wf-step-pct">40% of remainder</span></div>
+          <div class="wf-step"><span>💸 Spend</span><span class="wf-step-pct">10% of remainder</span></div>
+        </div>
+
+        <!-- Currency -->
+        <div class="fl">Base currency</div>
+        <select class="inp" id="g-ccy">
+          <option value="NGN">₦ NGN — Nigerian Naira</option>
+          <option value="USD">$ USD — US Dollar</option>
+          <option value="GBP">£ GBP — British Pound</option>
+          <option value="EUR">€ EUR — Euro</option>
+        </select>
+
+        <!-- Income sources (populated by JS) -->
+        <div class="fl" style="margin-top:22px">
+          Income sources — expected monthly amounts
+          <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--tx3);font-size:10px">
+            (0 = irregular, you'll log actual amounts)
+          </span>
+        </div>
+        <div id="setup-srcs"></div>
+
+        <button class="btn-p" onclick="finishSetup()">Launch my dashboard →</button>
+      </div>
+    </div>
+
+    <!-- ═══════════ MAIN APP ═══════════ -->
+    <div id="s-main">
+
+      <!-- Top bar -->
+      <div class="topbar">
+        <div class="tb-left">
+          <h1>Finance dashboard</h1>
+          <p id="tb-date">Personal plan · multi-currency</p>
+        </div>
+        <div class="tb-right">
+          Base currency
+          <select id="tb-ccy" onchange="switchBase(this.value)">
+            <option value="NGN">₦ NGN</option>
+            <option value="USD">$ USD</option>
+            <option value="GBP">£ GBP</option>
+            <option value="EUR">€ EUR</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Nav -->
+      <div class="nav">
+        <button class="nav-btn on" onclick="go('overview')">📊 Overview</button>
+        <button class="nav-btn" onclick="go('income')">💵 Income</button>
+        <button class="nav-btn" onclick="go('expenses')">💸 Expenses</button>
+        <button class="nav-btn" onclick="go('plan')">⚙️ Plan settings</button>
+        <button class="nav-btn" onclick="go('ai')">🤖 AI Advisor</button>
+      </div>
+
+      <!-- Pages -->
+      <div class="pages">
+
+        <!-- OVERVIEW (content rendered by JS) -->
+        <div class="page on" id="p-overview"></div>
+
+        <!-- INCOME (content rendered by JS) -->
+        <div class="page" id="p-income"></div>
+
+        <!-- EXPENSES (content rendered by JS) -->
+        <div class="page" id="p-expenses"></div>
+
+        <!-- PLAN (content rendered by JS) -->
+        <div class="page" id="p-plan"></div>
+
+        <!-- AI ADVISOR -->
+        <div class="page" id="p-ai">
+          <div class="sec" style="margin-top:0">AI Finance Advisor</div>
+          <div style="font-size:12px;color:var(--tx3);margin-bottom:14px">
+            Knows your full plan, all income sources, and every transaction you've logged.
+          </div>
+
+          <!-- Quick-ask chips -->
+          <div style="margin-bottom:14px">
+            <span class="chip" onclick="ask('Am I on track this month?')">Am I on track?</span>
+            <span class="chip" onclick="ask('Break down my income sources this month')">Income breakdown</span>
+            <span class="chip" onclick="ask('How much should I be setting aside for investments?')">Invest
+              target?</span>
+            <span class="chip" onclick="ask('Give me a full monthly summary')">Full summary</span>
+            <span class="chip" onclick="ask('How is my tithe looking this month?')">Tithe check</span>
+            <span class="chip" onclick="ask('Where can I improve my finances?')">Advice</span>
+          </div>
+
+          <!-- Chat -->
+          <div class="ai-outer">
+            <div class="ai-msgs" id="ai-msgs">
+              <div class="msg a">Hi! I know your full financial plan — 8 income sources and your tithe-first waterfall.
+                Ask me anything.</div>
+            </div>
+            <div class="ai-in-row">
+              <input id="ai-in" placeholder="Ask anything about your finances..."
+                onkeydown="if(event.key==='Enter')sendAI()">
+              <button onclick="sendAI()">→</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /pages -->
+
+      <!-- Floating action button -->
+      <button class="fab" onclick="openModal()" title="Log transaction">＋</button>
+    </div><!-- /s-main -->
+
+    <!-- ═══════════ LOG TRANSACTION MODAL ═══════════ -->
+    <div class="ov" id="modal" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <h2>Log transaction</h2>
+
+        <!-- Type -->
+        <div class="m-type-row">
+          <button id="btn-exp" class="mtbtn exp" onclick="setType('e')">💸 Expense</button>
+          <button id="btn-inc" class="mtbtn" onclick="setType('i')">💵 Income</button>
+        </div>
+
+        <!-- Amount -->
+        <div class="mlbl">Amount</div>
+        <div class="mr2">
+          <input class="minp" type="number" id="m-amt" placeholder="0" style="flex:2" oninput="onAmtChange()">
+          <select class="minp" id="m-ccy" style="flex:1" onchange="onAmtChange()">
+            <option value="NGN">₦ NGN</option>
+            <option value="USD">$ USD</option>
+            <option value="GBP">£ GBP</option>
+            <option value="EUR">€ EUR</option>
+          </select>
+        </div>
+        <div class="mconv" id="m-conv"></div>
+
+        <!-- Live waterfall preview (income only) -->
+        <div class="modal-split" id="modal-split">
+          <div class="modal-split-t">💧 This income will be split as:</div>
+          <div class="modal-split-grid" id="modal-split-grid"></div>
+        </div>
+
+        <!-- Expense fields -->
+        <div id="exp-fields">
+          <div class="mlbl">
+            Draw from bucket
+            <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--tx3);font-size:10px">
+              — which allocation are you spending from?
+            </span>
+          </div>
+          <select class="minp" id="m-bucket" onchange="onBucketChange()">
+            <option value="spend">💸 Spend — daily expenses (normal)</option>
+            <option value="save">💰 Save — savings bucket</option>
+            <option value="invest">📈 Invest — investment funds</option>
+            <option value="give">🎁 Give — giving funds</option>
+            <option value="emergency">🆘 Emergency fund</option>
+            <option value="tithe">✝️ Tithe</option>
+          </select>
+          <div id="bucket-warning"
+            style="display:none;background:#e8405a18;border:1px solid #e8405a44;border-radius:8px;padding:8px 10px;margin-top:6px;font-size:11px;color:#e8405a;line-height:1.5">
+          </div>
+          <div class="mlbl">Spent on</div>
+          <select class="minp" id="m-cat" onchange="onCatChange()"></select>
+          <div class="mlbl">
+            Reason
+            <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--tx3);font-size:10px">
+              — required if drawing from wrong bucket
+            </span>
+          </div>
+        </div>
+
+        <!-- Income fields -->
+        <div id="inc-fields" style="display:none">
+          <div class="mlbl">Which source?</div>
+          <select class="minp" id="m-src"></select>
+        </div>
+
+        <!-- Note (shared) -->
+        <div class="mlbl">Note</div>
+        <input class="minp" type="text" id="m-note" placeholder="e.g. client payment, suya, Uber...">
+
+        <button class="mbtn-save" onclick="saveTx()">Save transaction</button>
+        <button class="mbtn-cancel" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- ═══════════ ADD SOURCE MODAL ═══════════ -->
+    <div class="ov" id="as-modal" onclick="if(event.target===this)closeAddSrc()">
+      <div class="modal">
+        <h2>Add income source</h2>
+
+        <div class="mlbl">Name</div>
+        <input class="minp" id="as-name" placeholder="e.g. YouTube, Consulting...">
+
+        <div class="mlbl">Type</div>
+        <select class="minp" id="as-type">
+          <option value="main">Main job</option>
+          <option value="business">Business</option>
+          <option value="investment">Investment</option>
+          <option value="gift">Gift</option>
+          <option value="other">Other</option>
+        </select>
+
+        <div class="mlbl">Emoji icon</div>
+        <input class="minp" id="as-emoji" placeholder="💡" maxlength="2">
+
+        <div class="mlbl">Expected monthly (optional)</div>
+        <div class="mr2">
+          <input class="minp" type="number" id="as-amt" placeholder="0" style="flex:2">
+          <select class="minp" id="as-ccy" style="flex:1">
+            <option value="NGN">₦ NGN</option>
+            <option value="USD">$ USD</option>
+            <option value="GBP">£ GBP</option>
+            <option value="EUR">€ EUR</option>
+          </select>
+        </div>
+
+        <button class="mbtn-save" onclick="saveNewSrc()">Add source</button>
+        <button class="mbtn-cancel" onclick="closeAddSrc()">Cancel</button>
+      </div>
+    </div>
+
+  </div><!-- /app -->
+
+  <!-- App JS (loaded last so DOM is ready) -->
+  <script src="js/app.js"></script>
+</body>
+
+</html>
