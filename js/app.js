@@ -705,6 +705,26 @@ function saveTx() {
   const cat    = txType === 'e' ? document.getElementById('m-cat').value : null;
   const rule   = bucket ? BUCKET_RULES[bucket] : null;
   const normal = rule ? rule.cats.includes(cat) : true;
+
+  // ── Reject if bucket is empty or amount exceeds what's left ──
+  if (bucket) {
+    var wNow         = wfall(actualIncome());
+    var alreadySpent = monthTxs()
+      .filter(function (t) { return t.type === 'e' && t.bucket === bucket; })
+      .reduce(function (s, t) { return s + toB(t.amt, t.ccy); }, 0);
+    var bucketAlloc = wNow[bucket] || 0;
+    var bucketLeft  = bucketAlloc - alreadySpent;
+    var amtInBase   = toB(a, document.getElementById('m-ccy').value);
+    if (bucketLeft <= 0) {
+      alert('❌ ' + BUCKET_NAMES[bucket] + ' bucket is empty.\n\nYou have ' + fmt(Math.max(0, bucketLeft)) + ' left in this bucket this month.\n\nChoose a different bucket or log income first.');
+      return;
+    }
+    if (amtInBase > bucketLeft) {
+      alert('❌ Not enough in ' + BUCKET_NAMES[bucket] + ' bucket.\n\nYou need ' + fmt(amtInBase) + ' but only ' + fmt(bucketLeft) + ' remains.\n\nReduce the amount, choose a different bucket, or log income first.');
+      return;
+    }
+  }
+
   txs.unshift({
     id:     uid(),
     type:   txType,
