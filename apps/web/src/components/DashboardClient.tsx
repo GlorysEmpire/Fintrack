@@ -33,6 +33,7 @@ type Tx = {
   currency: string;
   bucketId: string | null;
   sourceId: string | null;
+  category: string | null;
   note: string | null;
   reason: string | null;
   override: boolean;

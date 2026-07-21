@@ -102,6 +102,7 @@ export default async function DashboardPage() {
         currency: t.currency,
         bucketId: t.bucketId,
         sourceId: t.sourceId,
+        category: t.category,
         note: t.note,
         reason: t.reason,
         override: t.override,

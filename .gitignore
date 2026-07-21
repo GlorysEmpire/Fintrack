@@ -5,10 +5,13 @@ dist
 *.db
 *.db-journal
 .env
-.env.local
-.env*.local
+.env.*
+!.env.example
+!**/.env.example
 .DS_Store
 coverage
 *.log
 apps/web/prisma/*.db
 apps/web/prisma/*.db-journal
+.vercel
+*.tsbuildinfo
