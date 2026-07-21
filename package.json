@@ -1,0 +1,21 @@
+{
+  "name": "fintrack",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @fintrack/web",
+    "build": "npm run build -w @fintrack/domain && npm run build -w @fintrack/web",
+    "db:push": "npm run db:push -w @fintrack/web",
+    "db:migrate": "npm run db:migrate -w @fintrack/web",
+    "db:deploy": "npm run db:deploy -w @fintrack/web",
+    "db:studio": "npm run db:studio -w @fintrack/web",
+    "test:domain": "npm run test -w @fintrack/domain",
+    "vercel-build": "npm run build -w @fintrack/domain && npm run build -w @fintrack/web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

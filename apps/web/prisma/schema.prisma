@@ -1,0 +1,140 @@
+// FinTrack database schema — PostgreSQL for local + Vercel production.
+// Set DATABASE_URL in .env (Neon / Vercel Postgres / local Postgres).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Someone who can sign in. Created on first successful OTP verify.
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  name         String?
+  baseCurrency String  @default("NGN")
+  /// pending = must see onboarding · completed = has plan · skipped = no plan yet
+  onboarding   String  @default("pending")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions      Session[]
+  otps          EmailOtp[]
+  plan          BudgetPlan?
+  transactions  Transaction[]
+  incomeSources IncomeSource[]
+  inbox         InboxMessage[]
+  aiMessages    AiMessage[]
+  /// JSON string of FX rates (NGN-denominated)
+  fxRates       String @default("{\"NGN\":1,\"USD\":1580,\"GBP\":1990,\"EUR\":1710}")
+  /// JSON: { order: string[], hidden: string[] } — dashboard section preferences
+  dashboardLayoutJson String @default("")
+}
+
+// AI / system accountability messages (override coaching, monthly review, etc.)
+model InboxMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// override_coach | monthly_review | plan_tip | system
+  kind      String   @default("system")
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  /// Optional link to a transaction that triggered the message
+  relatedTxId String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Short chat history for AI Advisor tab (server-side only)
+model AiMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// user | assistant
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Browser session — token lives in httpOnly cookie "ft_session"
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// One-time email login codes (valid ~10 minutes)
+model EmailOtp {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+// One plan per user for now (households come later)
+model BudgetPlan {
+  id                        String   @id @default(cuid())
+  userId                    String   @unique
+  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                      String
+  templateId                String?
+  emergencyCarryOverDefault Boolean  @default(true)
+  /// JSON array of PlanBucket from @fintrack/domain
+  bucketsJson               String
+  /// JSON map bucketId → opening balance from carry-over months
+  openingBalancesJson       String   @default("{}")
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+// Ready for Sprint 2 income sources
+model IncomeSource {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  type      String   @default("other")
+  emoji     String   @default("💵")
+  currency  String   @default("NGN")
+  amount    Float    @default(0)
+  createdAt DateTime @default(now())
+}
+
+// Ready for Sprint 2 transactions (income / expense)
+model Transaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// "i" = income · "e" = expense
+  type      String
+  amount    Float
+  currency  String   @default("NGN")
+  bucketId  String?
+  category  String?
+  sourceId  String?
+  note      String?
+  /// User intentionally spent outside the "normal" bucket
+  override  Boolean  @default(false)
+  reason    String?
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}

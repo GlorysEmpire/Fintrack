@@ -1,0 +1,217 @@
+/**
+ * GET  /api/transactions — list recent transactions (optional ?month=1 for current month)
+ * POST /api/transactions — log income or expense
+ *
+ * Soft friction (product rule): we NEVER hard-block an expense.
+ * If overspend / empty bucket, client must send confirmOverride=true + reason.
+ */
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import {
+  amountInBase,
+  expenseFriction,
+  filterMonthTxs,
+  type MoneyTx,
+} from "@fintrack/domain";
+import { formatMoney, type CurrencyCode } from "@fintrack/domain";
+import { getSessionUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { createOverrideInboxMessage } from "@/lib/inbox";
+import { getUserPlan } from "@/lib/plan";
+import { parseFx, parseOpeningBalances } from "@/lib/money";
+
+export async function GET(req: Request) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  const url = new URL(req.url);
+  const monthOnly = url.searchParams.get("month") === "1";
+
+  const txs = await prisma.transaction.findMany({
+    where: { userId: user.id },
+    orderBy: { date: "desc" },
+    take: 200,
+  });
+
+  if (!monthOnly) {
+    return NextResponse.json({ ok: true, transactions: txs });
+  }
+
+  const month = filterMonthTxs(
+    txs.map((t) => ({
+      type: t.type as "i" | "e",
+      amount: t.amount,
+      currency: t.currency,
+      bucketId: t.bucketId,
+      sourceId: t.sourceId,
+      date: t.date,
+    }))
+  );
+  // Return full rows for those that fall in the month
+  const ids = new Set(
+    month.map((m) => {
+      // match by reconstructing is weak — filter original by date
+      return null;
+    })
+  );
+  void ids;
+  const start = new Date();
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+  const monthRows = txs.filter((t) => t.date >= start);
+  return NextResponse.json({ ok: true, transactions: monthRows });
+}
+
+const postSchema = z.object({
+  type: z.enum(["i", "e"]),
+  amount: z.number().positive(),
+  currency: z.enum(["NGN", "USD", "GBP", "EUR"]).default("NGN"),
+  bucketId: z.string().optional().nullable(),
+  sourceId: z.string().optional().nullable(),
+  category: z.string().optional().nullable(),
+  note: z.string().optional().nullable(),
+  reason: z.string().optional().nullable(),
+  /** Client must set true when friction warns overspend / empty */
+  confirmOverride: z.boolean().optional().default(false),
+});
+
+export async function POST(req: Request) {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = postSchema.parse(await req.json());
+    const plan = await getUserPlan(user.id);
+    const fx = parseFx(user.fxRates);
+    const planRow = await prisma.budgetPlan.findUnique({
+      where: { userId: user.id },
+    });
+    const opening = planRow
+      ? parseOpeningBalances(planRow.openingBalancesJson)
+      : {};
+
+    // Income: optional source; no friction
+    if (body.type === "i") {
+      const tx = await prisma.transaction.create({
+        data: {
+          userId: user.id,
+          type: "i",
+          amount: body.amount,
+          currency: body.currency,
+          sourceId: body.sourceId || null,
+          note: body.note || null,
+        },
+      });
+      return NextResponse.json({ ok: true, transaction: tx });
+    }
+
+    // Expense: need a bucket when plan exists (still allow without plan)
+    if (plan && !body.bucketId) {
+      return NextResponse.json(
+        { ok: false, error: "Pick a bucket for this expense." },
+        { status: 400 }
+      );
+    }
+
+    const monthRows = await prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        date: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+      },
+    });
+    const monthTxs: MoneyTx[] = monthRows.map((t) => ({
+      type: t.type as "i" | "e",
+      amount: t.amount,
+      currency: t.currency,
+      bucketId: t.bucketId,
+      sourceId: t.sourceId,
+      date: t.date,
+    }));
+
+    const amountBase = amountInBase(
+      body.amount,
+      body.currency,
+      user.baseCurrency,
+      fx
+    );
+
+    const friction = expenseFriction({
+      amountBase,
+      bucketId: body.bucketId || "spend",
+      plan,
+      monthTxs,
+      base: user.baseCurrency,
+      fx,
+      openingBalances: opening,
+    });
+
+    const needsConfirm = friction.wouldOverspend || friction.emptyBucket;
+    if (needsConfirm && !body.confirmOverride) {
+      // Soft stop: tell the client to show reason + confirm UI
+      return NextResponse.json(
+        {
+          ok: false,
+          needsConfirm: true,
+          friction,
+          error: friction.message,
+        },
+        { status: 409 }
+      );
+    }
+
+    if (needsConfirm && !(body.reason && body.reason.trim())) {
+      return NextResponse.json(
+        {
+          ok: false,
+          needsConfirm: true,
+          friction,
+          error: "Add a short reason so future-you (and AI) know why.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const tx = await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "e",
+        amount: body.amount,
+        currency: body.currency,
+        bucketId: body.bucketId || null,
+        category: body.category || null,
+        note: body.note || null,
+        reason: body.reason || null,
+        override: needsConfirm,
+      },
+    });
+
+    // Accountability: queue an inbox message when they override the plan
+    if (needsConfirm) {
+      const bucketName =
+        plan?.buckets.find((b) => b.id === body.bucketId)?.name ||
+        body.bucketId ||
+        "bucket";
+      const base = user.baseCurrency as CurrencyCode;
+      await createOverrideInboxMessage({
+        userId: user.id,
+        txId: tx.id,
+        bucketName,
+        amountLabel: formatMoney(body.amount, body.currency as CurrencyCode),
+        reason: (body.reason || "").trim(),
+        remainingLabel: formatMoney(Math.max(0, friction.remaining), base),
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      transaction: tx,
+      friction: needsConfirm ? friction : undefined,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Invalid request";
+    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+  }
+}
