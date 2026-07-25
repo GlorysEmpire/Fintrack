@@ -152,12 +152,18 @@ export function LogTransactionModal({
   return (
     <div
       className="ov on"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="log-tx-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
     >
-      <div className="modal">
-        <h2>Log transaction</h2>
+      <div className="modal glass-card">
+        <h2 id="log-tx-title">Log transaction</h2>
 
         <div className="m-type-row">
           <button

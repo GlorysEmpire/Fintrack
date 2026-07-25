@@ -5,7 +5,9 @@
  * Talks to POST /api/ai/chat (server holds XAI_API_KEY).
  */
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { AppShell } from "./AppShell";
+import { EmptyState } from "./EmptyState";
 
 const CHIPS = [
   "Am I on track this month?",
@@ -109,14 +111,24 @@ export function AdvisorClient({
 
       <div className="ai-outer">
         <div className="ai-msgs">
-          {messages.map((m, i) => (
-            <div
-              key={m.id || i}
-              className={`msg ${m.role === "user" ? "u" : "a"}`}
-            >
-              {m.content}
-            </div>
-          ))}
+          {messages.length === 0 ? (
+            <EmptyState
+              icon={Sparkles}
+              title="No messages yet"
+              description="Ask Steward about your plan, tithe, or this month’s numbers."
+              actionLabel="Am I on track?"
+              onAction={() => send(CHIPS[0])}
+            />
+          ) : (
+            messages.map((m, i) => (
+              <div
+                key={m.id || i}
+                className={`msg ${m.role === "user" ? "u" : "a"}`}
+              >
+                {m.content}
+              </div>
+            ))
+          )}
           {loading && <div className="msg a">Thinking…</div>}
         </div>
         <div className="ai-in-row">

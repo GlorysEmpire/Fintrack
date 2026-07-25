@@ -12,6 +12,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AuroraBackground } from "@/components/AuroraBackground";
 
 type Path = "choose" | "templates";
 
@@ -42,7 +43,8 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="container">
+    <AuroraBackground>
+    <div className="container relative z-10 mx-auto max-w-lg px-6 py-12">
       <div className="logo">
         <span className="logo-dot" /> FinTrack setup
       </div>
@@ -179,5 +181,6 @@ export default function OnboardingPage() {
         </p>
       )}
     </div>
+    </AuroraBackground>
   );
 }
