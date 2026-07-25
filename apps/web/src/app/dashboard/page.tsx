@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import {
   allocateWaterfall,
   filterMonthTxs,
+  forecast,
   monthSnapshot,
   type MoneyTx,
 } from "@fintrack/domain";
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
     : {};
   const fx = parseFx(user.fxRates);
 
-  const [sources, allTxs, inboxUnread, layout] = await Promise.all([
+  const [sources, allTxs, inboxUnread, layout, recurring] = await Promise.all([
     prisma.incomeSource.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
@@ -48,6 +49,9 @@ export default async function DashboardPage() {
     }),
     unreadCount(user.id),
     getUserDashboardLayout(user.id),
+    prisma.recurringRule.findMany({
+      where: { userId: user.id, active: true },
+    }),
   ]);
 
   const moneyTxs: MoneyTx[] = allTxs.map((t) => ({
@@ -69,10 +73,34 @@ export default async function DashboardPage() {
   const sampleWaterfall =
     plan && snap.income === 0 ? allocateWaterfall(100_000, plan) : null;
 
-  // Days remaining in calendar month (like legacy app)
   const now = new Date();
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysLeft = Math.max(0, lastDay - now.getDate());
+
+  const forecastResult = forecast(plan, moneyTxs, 1, {
+    base: user.baseCurrency,
+    fx,
+    recurring: recurring.map((r) => ({
+      amount: r.amount,
+      currency: r.currency,
+      type: r.type as "i" | "e",
+      cadence: r.cadence,
+      active: r.active,
+    })),
+  });
+  const next = forecastResult.months[0];
+  const forecastNext =
+    next && next.expectedGross > 0
+      ? {
+          gross: next.expectedGross,
+          lines: next.waterfall.lines.map((l) => ({
+            bucketId: l.bucketId,
+            name: l.name,
+            emoji: l.emoji,
+            allocated: l.allocated,
+          })),
+        }
+      : null;
 
   return (
     <DashboardClient
@@ -111,6 +139,7 @@ export default async function DashboardPage() {
       inboxUnread={inboxUnread}
       daysLeft={daysLeft}
       layout={layout}
+      forecastNext={forecastNext}
     />
   );
 }

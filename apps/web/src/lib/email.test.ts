@@ -1,12 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { isDevShowCode } from "./email";
 
-const keys = [
-  "AUTH_DEV_SHOW_CODE",
-  "VERCEL",
-  "VERCEL_ENV",
-  "NODE_ENV",
-] as const;
+const keys = ["AUTH_DEV_SHOW_CODE", "VERCEL", "VERCEL_ENV"] as const;
 
 const snapshot: Partial<Record<(typeof keys)[number], string | undefined>> = {};
 
@@ -58,5 +53,14 @@ describe("isDevShowCode", () => {
       VERCEL_ENV: "development",
     });
     expect(isDevShowCode()).toBe(true);
+  });
+
+  it("is false when flag is off on local", () => {
+    setEnv({
+      AUTH_DEV_SHOW_CODE: "false",
+      VERCEL: undefined,
+      VERCEL_ENV: undefined,
+    });
+    expect(isDevShowCode()).toBe(false);
   });
 });
