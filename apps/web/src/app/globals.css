@@ -380,3 +380,56 @@ a.nav-btn {
 a { color: var(--g); text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
 .ov.on { display: flex; }
+
+
+/* ─── ERROR / LOADING BOUNDARIES ─────────────────────────────────── */
+.ft-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.ft-boundary-card {
+  max-width: 420px;
+  width: 100%;
+  background: var(--bg2);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  padding: 28px;
+}
+.ft-boundary-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--g);
+  margin-bottom: 12px;
+}
+.ft-boundary-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.ft-boundary-body { font-size: 14px; color: var(--tx2); line-height: 1.5; margin-bottom: 20px; }
+.ft-boundary-actions { display: flex; flex-direction: column; gap: 8px; }
+.ft-loading {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg);
+  color: var(--tx2);
+}
+.ft-loading-bar {
+  width: 120px;
+  height: 3px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, var(--g), transparent);
+  background-size: 200% 100%;
+  animation: ft-shimmer 1.2s linear infinite;
+}
+.ft-loading-text { font-size: 13px; }
+@keyframes ft-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
