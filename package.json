@@ -13,7 +13,10 @@
     "db:deploy": "npm run db:deploy -w @fintrack/web",
     "db:studio": "npm run db:studio -w @fintrack/web",
     "test:domain": "npm run test -w @fintrack/domain",
-    "vercel-build": "npm run build -w @fintrack/domain && npm run build -w @fintrack/web"
+    "vercel-build": "npm run build -w @fintrack/domain && npm run build -w @fintrack/web",
+    "test": "npm run test:domain && npm run test -w @fintrack/web",
+    "test:e2e": "npm run test:e2e -w @fintrack/web",
+    "lint": "npm run build -w @fintrack/domain && npx tsc --noEmit -p apps/web"
   },
   "engines": {
     "node": ">=20"

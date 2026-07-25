@@ -10,10 +10,17 @@
  *   AUTH_DEV_SHOW_CODE — "true" only for local testing
  */
 
+/**
+ * Whether the OTP may be logged / returned in API responses.
+ * Only local machine (`!VERCEL`) or Vercel *development* environment.
+ * Preview and Production never leak codes, even if AUTH_DEV_SHOW_CODE=true.
+ */
 export function isDevShowCode(): boolean {
-  // Never expose codes in production even if misconfigured
-  if (process.env.NODE_ENV === "production") return false;
-  return process.env.AUTH_DEV_SHOW_CODE === "true";
+  if (process.env.AUTH_DEV_SHOW_CODE !== "true") return false;
+  // Local (not on Vercel) OR Vercel development only
+  const onVercel = process.env.VERCEL === "1";
+  if (!onVercel) return true;
+  return process.env.VERCEL_ENV === "development";
 }
 
 export async function sendLoginCodeEmail(opts: {

@@ -55,12 +55,20 @@ export async function createOtp(email: string) {
   };
 }
 
+const OTP_MAX_ATTEMPTS = 5;
+
+/**
+ * Verify a login code.
+ * Wrong guesses increment EmailOtp.attempts; at 5 the code is consumed
+ * (invalidated) so a later correct guess still fails.
+ */
 export async function verifyOtp(email: string, code: string) {
   const normalized = email.trim().toLowerCase();
+  const submitted = code.trim();
+
   const otp = await prisma.emailOtp.findFirst({
     where: {
       email: normalized,
-      code: code.trim(),
       consumed: false,
       expiresAt: { gt: new Date() },
     },
@@ -68,6 +76,19 @@ export async function verifyOtp(email: string, code: string) {
   });
 
   if (!otp) return null;
+
+  if (otp.code !== submitted) {
+    const attempts = otp.attempts + 1;
+    await prisma.emailOtp.update({
+      where: { id: otp.id },
+      data: {
+        attempts,
+        // Invalidate after 5 wrong guesses
+        ...(attempts >= OTP_MAX_ATTEMPTS ? { consumed: true } : {}),
+      },
+    });
+    return null;
+  }
 
   await prisma.emailOtp.update({
     where: { id: otp.id },

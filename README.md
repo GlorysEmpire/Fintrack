@@ -2,7 +2,7 @@
 
 Personal finance OS — custom budget waterfalls, multi-currency tracking, household sharing (soon), and a finance-native AI advisor (soon).
 
-**Primary target:** App Store · **Now:** Web first for fast testing · **Legacy vanilla app:** `legacy/`
+**Primary target:** App Store · **Now:** Web first (Next.js on Vercel)
 
 ## Sprint 1 ✅
 
@@ -64,7 +64,6 @@ Open [http://localhost:3456](http://localhost:3456)
 ```
 apps/web              Next.js app (UI + API routes) + Prisma
 packages/domain       Pure money math (waterfall, templates, carry-over, FX)
-legacy/               Original single-page HTML/JS app
 LAUNCH.md             Postgres + Vercel deploy steps
 ```
 

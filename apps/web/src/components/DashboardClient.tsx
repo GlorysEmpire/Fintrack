@@ -9,6 +9,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion } from "framer-motion";
+import { Plus, Receipt } from "lucide-react";
 import {
   formatMoney,
   type BudgetPlan,
@@ -23,8 +25,11 @@ import { LogTransactionModal } from "./LogTransactionModal";
 import { DashboardCharts } from "./DashboardCharts";
 import { DashboardCustomize } from "./DashboardCustomize";
 import { AppShell } from "./AppShell";
+import { EmptyState } from "./EmptyState";
+import { Money } from "./Money";
 import { bucketColor } from "@/lib/bucket-colors";
 import { formatTxDate } from "@/lib/format-date";
+import { useCountUp } from "@/hooks/useCountUp";
 
 type Tx = {
   id: string;
@@ -66,6 +71,11 @@ type Props = {
   inboxUnread: number;
   daysLeft: number;
   layout: DashboardLayout;
+  /** Optional next-month projection (Phase 4) */
+  forecastNext?: {
+    gross: number;
+    lines: { bucketId: string; name: string; emoji: string; allocated: number }[];
+  } | null;
 };
 
 function ruleForBucket(meta: { mode: string; percent: number } | undefined) {
@@ -89,6 +99,7 @@ export function DashboardClient(props: Props) {
     inboxUnread,
     daysLeft,
     layout,
+    forecastNext = null,
   } = props;
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
@@ -96,6 +107,9 @@ export function DashboardClient(props: Props) {
   const base = baseCurrency as CurrencyCode;
 
   const actual = snapshot.income;
+  const incomeAnim = useCountUp(actual);
+  const expenseAnim = useCountUp(snapshot.expenses);
+  const netAnim = useCountUp(Math.abs(snapshot.net));
   const chartWaterfall =
     snapshot.waterfall && actual > 0 ? snapshot.waterfall : sampleWaterfall;
 
@@ -128,19 +142,21 @@ export function DashboardClient(props: Props) {
     return s ? `${s.emoji} ${s.name}` : "💵 Income";
   };
 
-  /** Legacy renderOverview metrics block */
+  /** Overview metrics with odometer count-up */
   function Metrics() {
     return (
       <div className="m-grid">
         <div className="metric">
           <div className="m-lbl">Income logged</div>
-          <div className="m-val">{formatMoney(actual, base)}</div>
+          <div className="m-val">
+            <Money amount={incomeAnim} currency={base} />
+          </div>
           <div className="m-sub">actual this month</div>
         </div>
         <div className="metric">
           <div className="m-lbl">Total expenses</div>
           <div className="m-val" style={{ color: "var(--r)" }}>
-            {formatMoney(snapshot.expenses, base)}
+            <Money amount={expenseAnim} currency={base} />
           </div>
           <div className="m-sub">all buckets combined</div>
         </div>
@@ -150,7 +166,7 @@ export function DashboardClient(props: Props) {
             className="m-val"
             style={{ color: snapshot.net >= 0 ? "var(--g)" : "var(--r)" }}
           >
-            {formatMoney(Math.abs(snapshot.net), base)}
+            <Money amount={netAnim} currency={base} />
           </div>
           <div className="m-sub">
             {snapshot.net >= 0 ? "available" : "over budget"}
@@ -158,8 +174,35 @@ export function DashboardClient(props: Props) {
         </div>
         <div className="metric">
           <div className="m-lbl">Days left</div>
-          <div className="m-val">{daysLeft}</div>
+          <div className="m-val font-mono tabular-nums">{daysLeft}</div>
           <div className="m-sub">in this month</div>
+        </div>
+      </div>
+    );
+  }
+
+  function ForecastCard() {
+    if (!forecastNext || forecastNext.gross <= 0) return null;
+    return (
+      <div className="card glass-card">
+        <div className="card-t">Next month projection</div>
+        <p className="m-sub" style={{ marginBottom: 10 }}>
+          Based on this month&apos;s income pattern + recurring rules
+        </p>
+        <div className="m-val" style={{ marginBottom: 12 }}>
+          <Money amount={forecastNext.gross} currency={base} />
+        </div>
+        <div className="legend">
+          {forecastNext.lines.slice(0, 6).map((l, i) => (
+            <div className="legend-item" key={l.bucketId}>
+              <div
+                className="legend-dot"
+                style={{ background: bucketColor(l.bucketId, i) }}
+              />
+              {l.emoji} {l.name}:{" "}
+              <Money amount={l.allocated} currency={base} />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -456,7 +499,7 @@ export function DashboardClient(props: Props) {
     );
   }
 
-  /** Legacy recent rows */
+  /** Recent rows with staggered enter */
   function RecentTx() {
     const rows = transactions.slice(0, 8);
     return (
@@ -464,17 +507,22 @@ export function DashboardClient(props: Props) {
         <div className="sec">Recent transactions</div>
         <div className="card">
           {rows.length === 0 ? (
-            <div className="empty">
-              <div className="ei">+</div>
-              <p>
-                No transactions yet.
-                <br />
-                Click <strong>+</strong> to log income or an expense.
-              </p>
-            </div>
+            <EmptyState
+              icon={Receipt}
+              title="No transactions yet"
+              description="Log income or an expense to start tracking this month."
+              actionLabel="Log transaction"
+              onAction={() => setModalOpen(true)}
+            />
           ) : (
-            rows.map((t) => (
-              <div className="tx-item" key={t.id}>
+            rows.map((t, i) => (
+              <motion.div
+                className="tx-item"
+                key={t.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.03 }}
+              >
                 <div>
                   <div className="tx-name">
                     {t.type === "i"
@@ -502,8 +550,11 @@ export function DashboardClient(props: Props) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div className={t.type === "i" ? "amt-pos" : "amt-neg"}>
-                    {t.type === "i" ? "+" : "−"}
-                    {formatMoney(t.amount, t.currency as CurrencyCode)}
+                    <Money
+                      amount={t.type === "i" ? t.amount : -t.amount}
+                      currency={t.currency}
+                      signed
+                    />
                   </div>
                   <button
                     type="button"
@@ -514,7 +565,7 @@ export function DashboardClient(props: Props) {
                     ×
                   </button>
                 </div>
-              </div>
+              </motion.div>
             ))
           )}
         </div>
@@ -559,18 +610,21 @@ export function DashboardClient(props: Props) {
         <DashboardCustomize layout={layout} />
       </div>
 
-      {/* Same order as legacy renderOverview when all sections visible */}
       {sections.map((id) => renderSection(id))}
+      <ForecastCard />
 
-      {/* FAB — identical to legacy */}
-      <button
+      <motion.button
         type="button"
         className="fab"
+        data-testid="fab"
         title="Log transaction"
+        aria-label="Log transaction"
         onClick={() => setModalOpen(true)}
+        whileTap={{ scale: 0.93 }}
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
       >
-        ＋
-      </button>
+        <Plus className="h-6 w-6" strokeWidth={2.5} />
+      </motion.button>
 
       <LogTransactionModal
         open={modalOpen}

@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * LOGIN PAGE (client component)
- * Step 1: enter email → API sends/creates OTP
- * Step 2: enter 6-digit code → session cookie set → onboarding or dashboard
- *
- * Dev mode shows the code on screen so you can test without SMTP.
+ * LOGIN — email OTP with aurora backdrop.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { AuroraBackground } from "@/components/AuroraBackground";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,7 +32,6 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed");
-      // Only present when AUTH_DEV_SHOW_CODE=true
       setDevCode(data.devCode || null);
       setStep("code");
     } catch (err) {
@@ -53,8 +53,6 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed");
-
-      // New users start with onboarding === "pending"
       if (data.user.onboarding === "pending") {
         router.push("/onboarding");
       } else {
@@ -69,77 +67,96 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="container">
-      <div className="logo">
-        <span className="logo-dot" /> FinTrack
+    <AuroraBackground>
+      <div className="absolute right-4 top-4 z-20">
+        <ThemeToggle persist={false} />
       </div>
-      <h1>
-        Your money.
-        <br />
-        Your rules.
-      </h1>
-      <p className="sub">
-        Sign in with email. We&apos;ll send a one-time code — no password to
-        remember. (2FA authenticator and stronger security come later.)
-      </p>
+      <div className="container relative z-10 mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
+        <div className="logo mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-primary">
+          <span className="logo-dot h-2 w-2 rounded-full bg-primary shadow-[0_0_20px_var(--color-primary)]" />
+          FinTrack
+        </div>
+        <h1 className="text-3xl font-bold leading-tight tracking-tight">
+          Your money.
+          <br />
+          Your rules.
+        </h1>
+        <p className="sub mt-3 text-sm leading-relaxed text-muted-foreground">
+          Sign in with email. We&apos;ll send a one-time code — no password to
+          remember.
+        </p>
 
-      {step === "email" ? (
-        <form onSubmit={requestCode}>
-          <div className="label">Email</div>
-          <input
-            className="input"
-            type="email"
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoFocus
-          />
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Sending…" : "Send login code"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={verify}>
-          <p className="sub" style={{ marginBottom: 12 }}>
-            Code sent to <strong style={{ color: "var(--tx)" }}>{email}</strong>
-          </p>
-          {devCode && (
-            <div className="dev-code">
-              Dev mode — your code (also in the terminal):
-              <strong>{devCode}</strong>
-            </div>
+        <div className="glass-card mt-8 rounded-2xl p-5">
+          {step === "email" ? (
+            <form onSubmit={requestCode} className="space-y-4">
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  className="mt-2"
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button className="w-full" type="submit" disabled={loading}>
+                {loading ? "Sending…" : "Send login code"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={verify} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Code sent to{" "}
+                <strong className="text-foreground">{email}</strong>
+              </p>
+              {devCode && (
+                <div className="dev-code rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm">
+                  Dev mode — your code (also in the terminal):
+                  <strong className="ml-2 font-mono text-primary" data-testid="dev-code">
+                    {devCode}
+                  </strong>
+                </div>
+              )}
+              <div>
+                <Label htmlFor="code">6-digit code</Label>
+                <Input
+                  id="code"
+                  className="mt-2 font-mono tracking-widest"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  required
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button className="w-full" type="submit" disabled={loading}>
+                {loading ? "Checking…" : "Sign in"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setStep("email");
+                  setCode("");
+                  setDevCode(null);
+                }}
+              >
+                Use a different email
+              </Button>
+            </form>
           )}
-          <div className="label">6-digit code</div>
-          <input
-            className="input"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            required
-            placeholder="123456"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            autoFocus
-          />
-          <button className="btn btn-primary" type="submit" disabled={loading}>
-            {loading ? "Checking…" : "Sign in"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              setStep("email");
-              setCode("");
-              setDevCode(null);
-            }}
-          >
-            Use a different email
-          </button>
-        </form>
-      )}
-
-      {error && <div className="error">{error}</div>}
-    </div>
+          {error && (
+            <div className="error mt-4 text-sm text-destructive">{error}</div>
+          )}
+        </div>
+      </div>
+    </AuroraBackground>
   );
 }

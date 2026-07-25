@@ -10,3 +10,4 @@ export * from "./fx";
 export * from "./money";
 export * from "./ai-philosophy";
 export * from "./dashboard-layout";
+export * from "./forecast";

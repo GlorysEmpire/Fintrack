@@ -2,7 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Inbox } from "lucide-react";
 import { AppShell } from "./AppShell";
+import { EmptyState } from "./EmptyState";
 import { formatTxDate } from "@/lib/format-date";
 
 type Msg = {
@@ -79,9 +81,12 @@ export function InboxClient({
       </div>
 
       {messages.length === 0 ? (
-        <div className="card empty">
-          No messages yet. When you confirm an overspend, Steward writes you
-          here.
+        <div className="card">
+          <EmptyState
+            icon={Inbox}
+            title="Inbox is clear"
+            description="When you confirm an overspend, Steward writes you here."
+          />
         </div>
       ) : (
         messages.map((m) => (

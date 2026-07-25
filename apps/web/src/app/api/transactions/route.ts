@@ -10,7 +10,6 @@ import { z } from "zod";
 import {
   amountInBase,
   expenseFriction,
-  filterMonthTxs,
   type MoneyTx,
 } from "@fintrack/domain";
 import { formatMoney, type CurrencyCode } from "@fintrack/domain";
@@ -38,24 +37,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, transactions: txs });
   }
 
-  const month = filterMonthTxs(
-    txs.map((t) => ({
-      type: t.type as "i" | "e",
-      amount: t.amount,
-      currency: t.currency,
-      bucketId: t.bucketId,
-      sourceId: t.sourceId,
-      date: t.date,
-    }))
-  );
-  // Return full rows for those that fall in the month
-  const ids = new Set(
-    month.map((m) => {
-      // match by reconstructing is weak — filter original by date
-      return null;
-    })
-  );
-  void ids;
+  // Current calendar month (server local date boundary)
   const start = new Date();
   start.setDate(1);
   start.setHours(0, 0, 0, 0);

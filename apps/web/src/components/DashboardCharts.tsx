@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Charts from legacy drawCharts() — same Chart.js options, colors, cutout.
- * WFC palette: tithe purple, emergency blue, invest green, give pink, save mint, spend yellow
+ * Chart.js aesthetic pass — gradient fills, rounded bars, donut center total.
  */
 import { useEffect, useRef } from "react";
 import {
@@ -15,6 +14,8 @@ import {
   Legend,
   DoughnutController,
   BarController,
+  type ChartConfiguration,
+  type Plugin,
 } from "chart.js";
 import type { WaterfallResult } from "@fintrack/domain";
 import { formatMoney, type CurrencyCode } from "@fintrack/domain";
@@ -30,6 +31,68 @@ Chart.register(
   DoughnutController,
   BarController
 );
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full =
+    h.length === 3
+      ? h
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : h;
+  const n = parseInt(full, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function makeVerticalGradient(
+  ctx: CanvasRenderingContext2D,
+  chartArea: { top: number; bottom: number },
+  color: string
+) {
+  const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  g.addColorStop(0, color);
+  g.addColorStop(1, hexToRgba(color, 0.4));
+  return g;
+}
+
+const tooltipStyle = {
+  backgroundColor: "oklch(0.18 0.012 160 / 0.95)",
+  titleColor: "oklch(0.96 0.01 160)",
+  bodyColor: "oklch(0.96 0.01 160)",
+  borderColor: "oklch(0.28 0.015 160)",
+  borderWidth: 1,
+  cornerRadius: 8,
+  padding: 10,
+  displayColors: true,
+  boxPadding: 4,
+};
+
+function centerTotalPlugin(totalLabel: string): Plugin<"doughnut"> {
+  return {
+    id: "centerTotal",
+    afterDraw(chart) {
+      const { ctx, chartArea } = chart;
+      if (!chartArea) return;
+      const cx = (chartArea.left + chartArea.right) / 2;
+      const cy = (chartArea.top + chartArea.bottom) / 2;
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "oklch(0.68 0.02 160)";
+      ctx.font = "600 10px system-ui, sans-serif";
+      ctx.fillText("TOTAL", cx, cy - 12);
+      ctx.fillStyle = "oklch(0.96 0.01 160)";
+      ctx.font =
+        "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
+      ctx.fillText(totalLabel, cx, cy + 8);
+      ctx.restore();
+    },
+  };
+}
 
 export function DashboardCharts({
   waterfall,
@@ -48,15 +111,15 @@ export function DashboardCharts({
   useEffect(() => {
     if (!donutRef.current || !barRef.current) return;
 
-    // Same as legacy: labels with emoji, Object.values(WFC) colors
     const labels = waterfall.lines.map((l) => `${l.emoji} ${l.name}`);
     const vals = waterfall.lines.map((l) => Math.round(l.allocated));
     const cols = waterfall.lines.map((l, i) => bucketColor(l.bucketId, i));
+    const totalLabel = formatMoney(gross, base);
 
     donutChart.current?.destroy();
     barChart.current?.destroy();
 
-    donutChart.current = new Chart(donutRef.current, {
+    const donutCfg: ChartConfiguration<"doughnut"> = {
       type: "doughnut",
       data: {
         labels,
@@ -65,17 +128,19 @@ export function DashboardCharts({
             data: vals,
             backgroundColor: cols,
             borderWidth: 2,
-            borderColor: "#1a1a1a",
+            borderColor: "oklch(0.14 0.01 160)",
+            hoverOffset: 4,
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: "65%",
+        cutout: "72%",
         plugins: {
           legend: { display: false },
           tooltip: {
+            ...tooltipStyle,
             callbacks: {
               label: (ctx) => {
                 const raw = Number(ctx.raw) || 0;
@@ -87,8 +152,12 @@ export function DashboardCharts({
           },
         },
       },
-    });
+      plugins: [centerTotalPlugin(totalLabel)],
+    };
 
+    donutChart.current = new Chart(donutRef.current, donutCfg);
+
+    const barColors = ["#4a9eff", ...cols];
     barChart.current = new Chart(barRef.current, {
       type: "bar",
       data: {
@@ -99,9 +168,19 @@ export function DashboardCharts({
               Math.round(gross),
               ...waterfall.lines.map((l) => Math.round(l.allocated)),
             ],
-            backgroundColor: ["#4a9eff", ...cols],
+            backgroundColor: (context) => {
+              const { chart, dataIndex } = context;
+              const { ctx, chartArea } = chart;
+              if (!chartArea) return barColors[dataIndex] || "#888";
+              return makeVerticalGradient(
+                ctx,
+                chartArea,
+                barColors[dataIndex] || "#888"
+              );
+            },
             borderWidth: 0,
-            borderRadius: 4,
+            borderRadius: 8,
+            borderSkipped: false,
           },
         ],
       },
@@ -111,6 +190,7 @@ export function DashboardCharts({
         plugins: {
           legend: { display: false },
           tooltip: {
+            ...tooltipStyle,
             callbacks: {
               label: (ctx) => formatMoney(Number(ctx.raw) || 0, base),
             },
@@ -118,19 +198,21 @@ export function DashboardCharts({
         },
         scales: {
           x: {
-            ticks: { color: "#555", font: { size: 10 } },
-            grid: { display: false },
+            ticks: { color: "oklch(0.55 0.02 160)", font: { size: 10 } },
+            grid: { color: "rgba(255,255,255,0.06)", display: false },
+            border: { display: false },
           },
           y: {
             ticks: {
-              color: "#555",
+              color: "oklch(0.55 0.02 160)",
               font: { size: 10 },
               callback: (v) => {
                 const n = Number(v);
                 return (base === "NGN" ? "₦" : "") + Math.round(n / 1000) + "k";
               },
             },
-            grid: { color: "#222" },
+            grid: { color: "rgba(255,255,255,0.06)" },
+            border: { display: false },
           },
         },
       },
@@ -142,11 +224,10 @@ export function DashboardCharts({
     };
   }, [waterfall, base, gross]);
 
-  // Markup matches legacy: two-col > card > card-t + chart-wrap + legend
   return (
     <div className="two-col">
-      <div className="card">
-        <div className="card-t">📊 Income allocation</div>
+      <div className="card glass-card">
+        <div className="card-t">Income allocation</div>
         <div className="chart-wrap">
           <canvas id="donut-c" ref={donutRef} />
         </div>
@@ -162,8 +243,8 @@ export function DashboardCharts({
           ))}
         </div>
       </div>
-      <div className="card">
-        <div className="card-t">📈 Monthly cash flow</div>
+      <div className="card glass-card">
+        <div className="card-t">Monthly cash flow</div>
         <div className="chart-wrap">
           <canvas id="flow-c" ref={barRef} />
         </div>
