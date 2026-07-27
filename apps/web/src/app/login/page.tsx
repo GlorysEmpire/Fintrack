@@ -73,10 +73,10 @@ export default function LoginPage() {
       </div>
       <div className="container relative z-10 mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
         <div className="logo mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-primary">
-          <span className="logo-dot h-2 w-2 rounded-full bg-primary shadow-[0_0_20px_var(--color-primary)]" />
+          <span className="logo-dot h-2 w-2 rounded-full bg-primary shadow-[var(--shadow-glow)]" />
           FinTrack
         </div>
-        <h1 className="text-3xl font-bold leading-tight tracking-tight">
+        <h1 className="font-display text-4xl font-normal leading-tight tracking-tight">
           Your money.
           <br />
           Your rules.
