@@ -3,7 +3,6 @@
  */
 import { redirect } from "next/navigation";
 import {
-  allocateWaterfall,
   filterMonthTxs,
   forecast,
   monthSnapshot,
@@ -70,8 +69,8 @@ export default async function DashboardPage() {
   start.setHours(0, 0, 0, 0);
   const monthRows = allTxs.filter((t) => t.date >= start);
 
-  const sampleWaterfall =
-    plan && snap.income === 0 ? allocateWaterfall(100_000, plan) : null;
+  // No sample / demo balances on first load (zeros until real income is logged)
+  const sampleWaterfall = null;
 
   const now = new Date();
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { Plus } from "lucide-react";
 import {
+  sortBucketsByCanonicalOrder,
   type BudgetPlan,
   type CurrencyCode,
   type DashboardLayout,
@@ -126,27 +127,50 @@ export function DashboardClient(props: Props) {
 
   const budgetSlices = useMemo(() => {
     if (!plan) return [];
+    const ordered = sortBucketsByCanonicalOrder(plan.buckets);
     const fromSnap =
       snapshot.buckets.length > 0
         ? snapshot.buckets
-        : plan.buckets.map((b) => ({
+        : ordered.map((b) => ({
             bucketId: b.id,
             opening: 0,
             allocated: 0,
             spent: 0,
             closing: 0,
           }));
-    return fromSnap.map((b, i) => {
-      const meta = plan.buckets.find((x) => x.id === b.bucketId);
+    // Stable Tithe → … → Spend order
+    const byId = new Map(fromSnap.map((b) => [b.bucketId, b]));
+    return ordered.map((meta, i) => {
+      const b = byId.get(meta.id) || {
+        bucketId: meta.id,
+        opening: 0,
+        allocated: 0,
+        spent: 0,
+        closing: 0,
+      };
       return {
-        id: b.bucketId,
-        name: meta?.name || b.bucketId,
+        id: meta.id,
+        name: meta.name || meta.id,
         spent: b.spent,
         alloc: b.opening + b.allocated,
         colorVar: COLOR_VARS[i % COLOR_VARS.length],
       };
     });
   }, [plan, snapshot.buckets]);
+
+  const bucketRemaining = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const b of snapshot.buckets) {
+      out[b.bucketId] = b.closing;
+    }
+    // ensure plan buckets exist even at zero
+    if (plan) {
+      for (const p of plan.buckets) {
+        if (!(p.id in out)) out[p.id] = 0;
+      }
+    }
+    return out;
+  }, [snapshot.buckets, plan]);
 
   async function deleteTx(id: string) {
     if (!confirm("Delete this transaction?")) return;
@@ -320,6 +344,7 @@ export function DashboardClient(props: Props) {
         sources={sources}
         baseCurrency={baseCurrency}
         fx={fx}
+        bucketRemaining={bucketRemaining}
       />
     </AppShell>
   );

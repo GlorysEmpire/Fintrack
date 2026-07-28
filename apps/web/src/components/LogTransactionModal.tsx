@@ -1,20 +1,20 @@
 "use client";
 
 /**
- * LOG TRANSACTION MODAL (Sprint 2)
- * - Income: amount, currency, source + live waterfall preview (if plan exists)
- * - Expense: amount, currency, bucket + soft friction (warn, never hard-block)
- *
- * Soft friction product rule:
- *   User can always spend their money.
- *   If over bucket / empty bucket → show warning, require reason + confirm checkbox.
+ * Log income or expense.
+ * Expense default. Category → bucket rules; cross-bucket needs Note.
+ * Hard-blocks when amount exceeds bucket remaining.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   allocateWaterfall,
   amountInBase,
+  EXPENSE_CATEGORIES,
   formatMoney,
+  isCrossBucket,
+  sortBucketsByCanonicalOrder,
+  BUCKET_DESCRIPTIONS,
   type BudgetPlan,
   type CurrencyCode,
 } from "@fintrack/domain";
@@ -33,6 +33,8 @@ type Props = {
   sources: Source[];
   baseCurrency: string;
   fx: Record<string, number>;
+  /** Optional live remaining by bucket id (base currency) for warnings */
+  bucketRemaining?: Record<string, number>;
 };
 
 const CURRENCIES: CurrencyCode[] = ["NGN", "USD", "GBP", "EUR"];
@@ -44,46 +46,61 @@ export function LogTransactionModal({
   sources,
   baseCurrency,
   fx,
+  bucketRemaining = {},
 }: Props) {
   const router = useRouter();
-  const [type, setType] = useState<"i" | "e">("i");
+  const [type, setType] = useState<"i" | "e">("e");
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<CurrencyCode>(
     (baseCurrency as CurrencyCode) || "NGN"
   );
   const [sourceId, setSourceId] = useState(sources[0]?.id || "");
-  const [bucketId, setBucketId] = useState(plan?.buckets[0]?.id || "spend");
+  const [bucketId, setBucketId] = useState("spend");
+  const [category, setCategory] = useState("food");
   const [note, setNote] = useState("");
-  const [reason, setReason] = useState("");
-  const [confirmOverride, setConfirmOverride] = useState(false);
-  const [frictionMsg, setFrictionMsg] = useState<string | null>(null);
-  const [needsConfirm, setNeedsConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Reset form when opened
+  const buckets = useMemo(
+    () =>
+      plan
+        ? sortBucketsByCanonicalOrder(plan.buckets)
+        : [],
+    [plan]
+  );
+
+  // Reset form when opened (default Expense)
   useEffect(() => {
     if (!open) return;
-    setType("i");
+    setType("e");
     setAmount("");
     setCurrency((baseCurrency as CurrencyCode) || "NGN");
     setSourceId(sources[0]?.id || "");
     setBucketId(
       plan?.buckets.find((b) => b.id === "spend")?.id ||
-        plan?.buckets[0]?.id ||
-        ""
+        sortBucketsByCanonicalOrder(plan?.buckets || [])[0]?.id ||
+        "spend"
     );
+    setCategory("food");
     setNote("");
-    setReason("");
-    setConfirmOverride(false);
-    setFrictionMsg(null);
-    setNeedsConfirm(false);
     setError(null);
   }, [open, baseCurrency, sources, plan]);
 
   const amtNum = parseFloat(amount) || 0;
+  const amountBase = amountInBase(amtNum, currency, baseCurrency, fx);
+  const remaining =
+    bucketId in bucketRemaining
+      ? bucketRemaining[bucketId]
+      : undefined;
+  const cross =
+    type === "e" && bucketId && category
+      ? isCrossBucket(bucketId, category)
+      : false;
+  const overBalance =
+    type === "e" &&
+    remaining !== undefined &&
+    (remaining <= 0 || amountBase > remaining + 1e-9);
 
-  /** Live income split preview in base currency */
   const incomePreview = useMemo(() => {
     if (type !== "i" || !plan || amtNum <= 0) return null;
     const base = amountInBase(amtNum, currency, baseCurrency, fx);
@@ -93,16 +110,37 @@ export function LogTransactionModal({
   const convHint =
     currency !== baseCurrency && amtNum > 0
       ? `≈ ${formatMoney(
-          amountInBase(amtNum, currency, baseCurrency, fx),
+          amountBase,
           baseCurrency as CurrencyCode
         )} in ${baseCurrency}`
       : "";
 
-  async function save(forceConfirm = false) {
+  async function save() {
     setError(null);
     setLoading(true);
     try {
       if (amtNum <= 0) throw new Error("Enter a valid amount");
+
+      if (type === "e" && plan && !bucketId) {
+        throw new Error("Pick a bucket for this expense.");
+      }
+
+      if (type === "e" && overBalance) {
+        throw new Error(
+          remaining !== undefined && remaining <= 0
+            ? "This bucket has no remaining balance. Log income first or choose another bucket."
+            : `Blocked: amount exceeds remaining balance (${formatMoney(
+                Math.max(0, remaining || 0),
+                baseCurrency as CurrencyCode
+              )} left).`
+        );
+      }
+
+      if (type === "e" && cross && !note.trim()) {
+        throw new Error(
+          "Cross-bucket spend blocked. Write a reason in the Note field, or choose a matching category."
+        );
+      }
 
       const payload: Record<string, unknown> = {
         type,
@@ -115,8 +153,10 @@ export function LogTransactionModal({
         payload.sourceId = sourceId || null;
       } else {
         payload.bucketId = bucketId || null;
-        payload.reason = reason.trim() || null;
-        payload.confirmOverride = forceConfirm || confirmOverride;
+        payload.category = category || null;
+        if (cross) {
+          payload.reason = note.trim();
+        }
       }
 
       const res = await fetch("/api/transactions", {
@@ -125,14 +165,6 @@ export function LogTransactionModal({
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-
-      // Soft friction path — server asks for reason + confirm
-      if (!data.ok && data.needsConfirm) {
-        setNeedsConfirm(true);
-        setFrictionMsg(data.friction?.message || data.error);
-        setError(data.error || "Confirm this spend with a reason.");
-        return;
-      }
 
       if (!data.ok) throw new Error(data.error || "Failed to save");
 
@@ -147,7 +179,7 @@ export function LogTransactionModal({
 
   if (!open) return null;
 
-  const buckets = plan?.buckets.slice().sort((a, b) => a.order - b.order) || [];
+  const desc = BUCKET_DESCRIPTIONS[bucketId] || "";
 
   return (
     <div
@@ -171,8 +203,7 @@ export function LogTransactionModal({
             className={`mtbtn${type === "e" ? " exp" : ""}`}
             onClick={() => {
               setType("e");
-              setNeedsConfirm(false);
-              setFrictionMsg(null);
+              setError(null);
             }}
           >
             💸 Expense
@@ -182,8 +213,7 @@ export function LogTransactionModal({
             className={`mtbtn${type === "i" ? " inc" : ""}`}
             onClick={() => {
               setType("i");
-              setNeedsConfirm(false);
-              setFrictionMsg(null);
+              setError(null);
             }}
           >
             💵 Income
@@ -232,14 +262,14 @@ export function LogTransactionModal({
                 </option>
               ))}
               {sources.length === 0 && (
-                <option value="">No sources — add in Settings</option>
+                <option value="">No sources (add in Settings)</option>
               )}
             </select>
 
             {incomePreview && (
-              <div className="modal-split">
+              <div className="modal-split" style={{ display: "block" }}>
                 <div className="modal-split-t">
-                  💧 This income will be split as
+                  This income will be split as
                 </div>
                 <div className="modal-split-grid">
                   {incomePreview.lines.map((l) => (
@@ -261,7 +291,7 @@ export function LogTransactionModal({
 
             {!plan && amtNum > 0 && (
               <p className="muted" style={{ marginTop: 10 }}>
-                No plan yet — income still saves. Set a plan in Settings to
+                No plan yet. Income still saves. Set a plan in Settings to
                 auto-split into buckets.
               </p>
             )}
@@ -270,69 +300,154 @@ export function LogTransactionModal({
 
         {type === "e" && (
           <>
-            <div className="mlbl">Draw from bucket</div>
+            <div className="mlbl">
+              Draw from bucket{" "}
+              <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--tx3)", fontSize: 10 }}>
+                (which allocation you are spending from)
+              </span>
+            </div>
             {buckets.length ? (
               <select
                 className="minp"
                 value={bucketId}
                 onChange={(e) => {
                   setBucketId(e.target.value);
-                  setNeedsConfirm(false);
-                  setFrictionMsg(null);
+                  setError(null);
                 }}
               >
                 {buckets.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.emoji} {b.name}
+                    {bucketRemaining[b.id] !== undefined
+                      ? ` · ${formatMoney(Math.max(0, bucketRemaining[b.id]), baseCurrency as CurrencyCode)} left`
+                      : ""}
                   </option>
                 ))}
               </select>
             ) : (
               <p className="muted">
-                No plan buckets — expense still logs. Set a plan for tracking.
+                No plan buckets. Expense still logs. Set a plan for tracking.
               </p>
             )}
 
-            {frictionMsg && (
-              <div className={`friction${needsConfirm ? " hard" : ""}`}>
-                {frictionMsg}
-                <div style={{ marginTop: 8, color: "var(--tx2)" }}>
-                  We won&apos;t block you — it&apos;s your money. We will ask
-                  you to own the decision.
-                </div>
-              </div>
-            )}
+            <div className="mlbl">Spent on</div>
+            <select
+              className="minp"
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setError(null);
+              }}
+            >
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
 
-            {(needsConfirm || frictionMsg) && (
-              <>
-                <div className="mlbl">Reason (required when over plan)</div>
-                <input
-                  className="minp"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="e.g. family emergency, intentional lifestyle choice…"
-                />
-                <label className="toggle-row" style={{ marginTop: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={confirmOverride}
-                    onChange={(e) => setConfirmOverride(e.target.checked)}
-                  />
-                  <div style={{ fontSize: 12 }}>
-                    I understand this may go beyond my plan — save anyway
-                  </div>
-                </label>
-              </>
+            {/* Cross-bucket / remaining warning (always visible when expense + bucket) */}
+            {bucketId && (
+              <div
+                role="alert"
+                className="bucket-warning"
+                style={{
+                  display: "block",
+                  marginTop: 8,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  lineHeight: 1.55,
+                  background: cross
+                    ? "var(--rdim)"
+                    : overBalance
+                      ? "var(--rdim)"
+                      : "var(--gdim)",
+                  border: cross || overBalance
+                    ? "1px solid color-mix(in oklch, var(--r) 40%, transparent)"
+                    : "1px solid var(--g)",
+                  color: cross || overBalance ? "var(--r)" : "var(--g)",
+                }}
+              >
+                {cross ? (
+                  <>
+                    <strong>Cross-bucket:</strong> this category does not match{" "}
+                    <strong>{buckets.find((b) => b.id === bucketId)?.name || bucketId}</strong>
+                    . {desc ? `${desc}. ` : ""}
+                    {remaining !== undefined && (
+                      <>
+                        Remaining:{" "}
+                        <strong>
+                          {formatMoney(
+                            Math.max(0, remaining),
+                            baseCurrency as CurrencyCode
+                          )}
+                        </strong>
+                        .{" "}
+                      </>
+                    )}
+                    <strong>Write a reason in the Note field to save.</strong>
+                  </>
+                ) : overBalance ? (
+                  <>
+                    <strong>Insufficient balance.</strong>{" "}
+                    {remaining !== undefined && remaining <= 0
+                      ? "This bucket is empty this month."
+                      : `Only ${formatMoney(
+                          Math.max(0, remaining || 0),
+                          baseCurrency as CurrencyCode
+                        )} remains.`}{" "}
+                    Reduce the amount, pick another bucket, or log income first.
+                  </>
+                ) : (
+                  <>
+                    <strong>
+                      {buckets.find((b) => b.id === bucketId)?.emoji}{" "}
+                      {buckets.find((b) => b.id === bucketId)?.name}
+                    </strong>
+                    {desc ? ` · ${desc}` : ""}
+                    {remaining !== undefined && (
+                      <>
+                        <br />
+                        Remaining this month:{" "}
+                        <strong>
+                          {formatMoney(
+                            Math.max(0, remaining),
+                            baseCurrency as CurrencyCode
+                          )}
+                        </strong>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </>
         )}
 
-        <div className="mlbl">Note (optional)</div>
+        <div className="mlbl">
+          Note{" "}
+          <span
+            style={{
+              fontWeight: 400,
+              textTransform: "none",
+              letterSpacing: 0,
+              color: cross ? "var(--r)" : "var(--tx3)",
+              fontSize: 10,
+            }}
+          >
+            {cross ? "(required for cross-bucket)" : "(optional)"}
+          </span>
+        </div>
         <input
           className="minp"
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="e.g. client payment, DSTV, Uber…"
+          placeholder={
+            cross
+              ? "Why are you drawing from this bucket?"
+              : "e.g. client payment, DSTV, Uber"
+          }
         />
 
         {error && <div className="error">{error}</div>}
@@ -341,22 +456,11 @@ export function LogTransactionModal({
           type="button"
           className="btn btn-primary"
           disabled={loading}
-          onClick={() => save(false)}
+          onClick={() => save()}
           style={{ marginTop: 16 }}
         >
           {loading ? "Saving…" : "Save transaction"}
         </button>
-
-        {needsConfirm && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={loading || !confirmOverride || !reason.trim()}
-            onClick={() => save(true)}
-          >
-            Confirm &amp; save anyway
-          </button>
-        )}
 
         <button type="button" className="btn btn-ghost" onClick={onClose}>
           Cancel

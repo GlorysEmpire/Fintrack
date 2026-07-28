@@ -126,8 +126,8 @@ export function monthSnapshot(
 }
 
 /**
- * Soft-friction check before saving an expense.
- * We NEVER hard-block — we return warnings so the UI can require a reason + confirm.
+ * Check remaining balance before saving an expense.
+ * Hard-block when amount exceeds remaining (or bucket is empty).
  */
 export function expenseFriction(opts: {
   amountBase: number;
@@ -146,6 +146,8 @@ export function expenseFriction(opts: {
   wouldOverspend: boolean;
   /** true if bucket has no allocation yet (no income / no plan) */
   emptyBucket: boolean;
+  /** true when save must be rejected (empty or would overspend) */
+  blocked: boolean;
   message: string;
 } {
   const {
@@ -164,10 +166,11 @@ export function expenseFriction(opts: {
       allocated: 0,
       spent: 0,
       overBy: amountBase,
-      wouldOverspend: true,
+      wouldOverspend: false,
       emptyBucket: true,
+      blocked: false,
       message:
-        "No budget plan yet. You can still log this — set a plan in Settings when ready.",
+        "No budget plan yet. Expense can still log. Set a plan in Settings when ready.",
     };
   }
 
@@ -176,16 +179,16 @@ export function expenseFriction(opts: {
   const remaining = row ? row.closing : 0;
   const allocated = row ? row.opening + row.allocated : 0;
   const spent = row?.spent || 0;
-  const emptyBucket = allocated <= 0 && remaining <= 0;
-  const wouldOverspend = amountBase > remaining;
+  const emptyBucket = remaining <= 0;
+  const wouldOverspend = amountBase > remaining + 1e-9;
   const overBy = wouldOverspend ? amountBase - remaining : 0;
+  const blocked = emptyBucket || wouldOverspend;
 
   let message = "";
   if (emptyBucket) {
-    message =
-      "This bucket has no balance this month (log income first, or confirm you still want to spend).";
+    message = `This bucket has no remaining balance this month. Log income first or choose another bucket.`;
   } else if (wouldOverspend) {
-    message = `This is ${overBy.toFixed(0)} over what's left in this bucket. Your money — but pause and name the reason.`;
+    message = `Blocked: amount exceeds remaining balance. You need more than ${remaining.toFixed(0)} left in this bucket.`;
   } else {
     message = "Within plan for this bucket.";
   }
@@ -197,6 +200,7 @@ export function expenseFriction(opts: {
     overBy,
     wouldOverspend,
     emptyBucket,
+    blocked,
     message,
   };
 }

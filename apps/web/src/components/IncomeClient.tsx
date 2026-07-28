@@ -46,9 +46,9 @@ export function IncomeClient({
 
   return (
     <AppShell baseCurrency={baseCurrency} email={email} inboxUnread={inboxUnread}>
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+      <div className="income-scroll mx-auto flex w-full max-w-[1100px] max-h-[calc(100dvh-8rem)] flex-col gap-4 overflow-y-auto pb-8">
         <div>
-          <h1 className="font-display text-3xl tracking-tight">Income</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Income</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Sources and amounts logged this month.
           </p>

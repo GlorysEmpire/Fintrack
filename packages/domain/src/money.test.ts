@@ -39,7 +39,7 @@ describe("monthSnapshot", () => {
 });
 
 describe("expenseFriction", () => {
-  it("flags overspend without blocking math", () => {
+  it("flags overspend as blocked when amount exceeds remaining", () => {
     const txs = [
       {
         type: "i" as const,
@@ -56,8 +56,9 @@ describe("expenseFriction", () => {
       base: "NGN",
       fx,
     });
-    // spend budget is 8100 — 50k is way over
+    // spend budget is 8100; 50k is way over
     assert.equal(f.wouldOverspend, true);
+    assert.equal(f.blocked, true);
     assert.ok(f.overBy > 0);
   });
 });

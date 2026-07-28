@@ -5,7 +5,6 @@
  */
 import { NextResponse } from "next/server";
 import {
-  allocateWaterfall,
   filterMonthTxs,
   monthSnapshot,
   type MoneyTx,
@@ -59,9 +58,8 @@ export async function GET() {
   const monthTxs = filterMonthTxs(moneyTxs);
   const snap = monthSnapshot(plan, monthTxs, user.baseCurrency, fx, opening);
 
-  // Sample preview when no income yet but plan exists (helps empty state)
-  const sampleWaterfall =
-    plan && snap.income === 0 ? allocateWaterfall(100_000, plan) : null;
+  // No sample balances on empty months
+  const sampleWaterfall = null;
 
   const start = new Date();
   start.setDate(1);

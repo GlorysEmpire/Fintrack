@@ -106,13 +106,14 @@ describe("POST /api/transactions", () => {
           amount: 1_000,
           currency: "NGN",
           bucketId: "spend",
+          category: "food",
           note: "coffee",
         }),
       })
     );
     const data = await res.json();
-    // may be 200 or 409 friction depending on remaining — mock has no month txs so ok
-    expect([200, 409, 400]).toContain(res.status);
+    // empty bucket with no income → hard-blocked 400; with balance → 200
+    expect([200, 400]).toContain(res.status);
     if (data.ok) {
       expect(create).toHaveBeenCalled();
       const arg = create.mock.calls[0][0] as {

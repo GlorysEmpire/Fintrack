@@ -22,7 +22,7 @@ export function Money({
     <span
       data-money
       className={cn(
-        "font-display tabular-nums tracking-tight font-normal",
+        "font-sans tabular-nums tracking-tight font-semibold",
         className
       )}
     >

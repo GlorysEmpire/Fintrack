@@ -2,14 +2,15 @@
  * GET  /api/transactions — list recent transactions (optional ?month=1 for current month)
  * POST /api/transactions — log income or expense
  *
- * Soft friction (product rule): we NEVER hard-block an expense.
- * If overspend / empty bucket, client must send confirmOverride=true + reason.
+ * Expenses that exceed bucket remaining are hard-blocked.
+ * Cross-bucket category spend requires note or reason text.
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   amountInBase,
   expenseFriction,
+  isCrossBucket,
   type MoneyTx,
 } from "@fintrack/domain";
 import { formatMoney, type CurrencyCode } from "@fintrack/domain";
@@ -130,27 +131,33 @@ export async function POST(req: Request) {
       openingBalances: opening,
     });
 
-    const needsConfirm = friction.wouldOverspend || friction.emptyBucket;
-    if (needsConfirm && !body.confirmOverride) {
-      // Soft stop: tell the client to show reason + confirm UI
+    // Hard block: never spend more than remaining in the chosen bucket
+    if (plan && friction.blocked) {
       return NextResponse.json(
         {
           ok: false,
-          needsConfirm: true,
+          blocked: true,
           friction,
           error: friction.message,
         },
-        { status: 409 }
+        { status: 400 }
       );
     }
 
-    if (needsConfirm && !(body.reason && body.reason.trim())) {
+    const category = body.category || null;
+    const note = (body.note || "").trim();
+    const reason = (body.reason || "").trim();
+    const cross =
+      Boolean(body.bucketId && category) &&
+      isCrossBucket(body.bucketId || "", category);
+
+    if (cross && !note && !reason) {
       return NextResponse.json(
         {
           ok: false,
-          needsConfirm: true,
-          friction,
-          error: "Add a short reason so future-you (and AI) know why.",
+          crossBucket: true,
+          error:
+            "Cross-bucket spend blocked. Write a reason in the Note field, or choose a matching category.",
         },
         { status: 400 }
       );
@@ -163,15 +170,15 @@ export async function POST(req: Request) {
         amount: body.amount,
         currency: body.currency,
         bucketId: body.bucketId || null,
-        category: body.category || null,
-        note: body.note || null,
-        reason: body.reason || null,
-        override: needsConfirm,
+        category,
+        note: note || null,
+        reason: reason || (cross ? note : null),
+        override: cross,
       },
     });
 
-    // Accountability: queue an inbox message when they override the plan
-    if (needsConfirm) {
+    // Accountability when intentionally spending from a non-matching category
+    if (cross) {
       const bucketName =
         plan?.buckets.find((b) => b.id === body.bucketId)?.name ||
         body.bucketId ||
@@ -182,7 +189,7 @@ export async function POST(req: Request) {
         txId: tx.id,
         bucketName,
         amountLabel: formatMoney(body.amount, body.currency as CurrencyCode),
-        reason: (body.reason || "").trim(),
+        reason: reason || note,
         remainingLabel: formatMoney(Math.max(0, friction.remaining), base),
       });
     }
@@ -190,7 +197,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       transaction: tx,
-      friction: needsConfirm ? friction : undefined,
+      friction,
+      crossBucket: cross,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid request";

@@ -53,8 +53,14 @@ export function BudgetOverviewPanel({
     );
   }, [slices]);
 
-  const totalAlloc = slices.reduce((s, x) => s + x.alloc, 0);
-  const totalSpent = slices.reduce((s, x) => s + x.spent, 0);
+  // Remaining balances (allocated − spent), not spent totals
+  const withRemaining = slices.map((s) => ({
+    ...s,
+    remaining: Math.max(0, s.alloc - s.spent),
+  }));
+  const totalAlloc = withRemaining.reduce((s, x) => s + x.alloc, 0);
+  const totalSpent = withRemaining.reduce((s, x) => s + x.spent, 0);
+  const totalRemaining = withRemaining.reduce((s, x) => s + x.remaining, 0);
   const pct =
     totalAlloc > 0
       ? Math.min(100, Math.round((totalSpent / totalAlloc) * 100))
@@ -65,16 +71,16 @@ export function BudgetOverviewPanel({
     const r = 54;
     const c = 2 * Math.PI * r;
     let offset = 0;
-    const base = totalSpent > 0 ? totalSpent : 1;
-    return slices.map((s, i) => {
-      const share = s.spent / base;
+    const base = totalRemaining > 0 ? totalRemaining : 1;
+    return withRemaining.map((s, i) => {
+      const share = s.remaining / base;
       const len = share * c * 0.75;
       const dash = `${len} ${c - len}`;
       const o = offset;
       offset += len;
       return { dash, offset: -o, color: colors[i] || FALLBACKS[0], id: s.id };
     });
-  }, [slices, colors, totalSpent]);
+  }, [withRemaining, colors, totalRemaining]);
 
   return (
     <GlassCard
@@ -83,7 +89,7 @@ export function BudgetOverviewPanel({
     >
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">
-          Budget overview
+          Income allocation (remaining)
         </h2>
         <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
           This month
@@ -103,35 +109,38 @@ export function BudgetOverviewPanel({
               strokeDasharray={`${2 * Math.PI * 54 * 0.75} ${2 * Math.PI * 54}`}
               strokeLinecap="round"
             />
-            {arcs.map((a) => (
-              <circle
-                key={a.id}
-                cx="70"
-                cy="70"
-                r="54"
-                fill="none"
-                stroke={a.color}
-                strokeWidth="12"
-                strokeDasharray={a.dash}
-                strokeDashoffset={a.offset}
-                strokeLinecap="round"
-              />
-            ))}
+            {totalRemaining > 0 &&
+              arcs.map((a) => (
+                <circle
+                  key={a.id}
+                  cx="70"
+                  cy="70"
+                  r="54"
+                  fill="none"
+                  stroke={a.color}
+                  strokeWidth="12"
+                  strokeDasharray={a.dash}
+                  strokeDashoffset={a.offset}
+                  strokeLinecap="round"
+                />
+              ))}
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-            <span className="font-display text-2xl tabular-nums text-foreground">
-              {pct}%
+            <span className="font-display text-xl tabular-nums text-foreground">
+              <Money amount={totalRemaining} currency={currency} />
             </span>
             <span className="max-w-[90px] text-[10px] text-muted-foreground">
-              of <Money amount={totalAlloc} currency={currency} />
+              remaining
             </span>
           </div>
         </div>
 
-        <ul className="flex flex-col gap-2">
-          {slices.slice(0, 6).map((s, i) => {
+        <ul className="flex max-h-[200px] flex-col gap-2 overflow-y-auto">
+          {withRemaining.slice(0, 8).map((s, i) => {
             const share =
-              totalSpent > 0 ? Math.round((s.spent / totalSpent) * 100) : 0;
+              totalRemaining > 0
+                ? Math.round((s.remaining / totalRemaining) * 100)
+                : 0;
             return (
               <li
                 key={s.id}
@@ -145,7 +154,7 @@ export function BudgetOverviewPanel({
                   {s.name}
                 </span>
                 <span className="tabular-nums" data-money>
-                  <Money amount={s.spent} currency={currency} />
+                  <Money amount={s.remaining} currency={currency} />
                 </span>
                 <span className="w-8 text-right tabular-nums">{share}%</span>
               </li>
@@ -153,7 +162,7 @@ export function BudgetOverviewPanel({
           })}
           {slices.length === 0 && (
             <li className="text-xs text-muted-foreground">
-              Set a plan and log expenses to fill this chart.
+              Log income to fund buckets. Remaining starts at 0.
             </li>
           )}
         </ul>
