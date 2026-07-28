@@ -7,6 +7,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   allocateWaterfall,
   amountInBase,
@@ -142,6 +143,16 @@ export function LogTransactionModal({
         );
       }
 
+      if (type === "i" && sources.length === 0) {
+        throw new Error(
+          "Add an income source first (Income tab). We don’t invent sources for you."
+        );
+      }
+
+      if (type === "i" && !sourceId) {
+        throw new Error("Pick an income source.");
+      }
+
       const payload: Record<string, unknown> = {
         type,
         amount: amtNum,
@@ -150,7 +161,7 @@ export function LogTransactionModal({
       };
 
       if (type === "i") {
-        payload.sourceId = sourceId || null;
+        payload.sourceId = sourceId;
       } else {
         payload.bucketId = bucketId || null;
         payload.category = category || null;
@@ -250,23 +261,47 @@ export function LogTransactionModal({
 
         {type === "i" && (
           <>
-            <div className="mlbl">Income source</div>
-            <select
-              className="minp"
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
-            >
-              {sources.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.emoji} {s.name}
-                </option>
-              ))}
-              {sources.length === 0 && (
-                <option value="">No sources (add in Settings)</option>
-              )}
-            </select>
+            {sources.length === 0 ? (
+              <div
+                className="card"
+                style={{
+                  marginTop: 8,
+                  marginBottom: 8,
+                  padding: 12,
+                }}
+              >
+                <p style={{ marginBottom: 10, fontSize: 14, lineHeight: 1.45 }}>
+                  You don&apos;t have any income sources yet. Add one before
+                  logging income — we never invent defaults for you.
+                </p>
+                <Link
+                  href="/income"
+                  className="btn btn-primary"
+                  style={{ display: "inline-block" }}
+                  onClick={onClose}
+                >
+                  Add income source →
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="mlbl">Income source</div>
+                <select
+                  className="minp"
+                  value={sourceId}
+                  onChange={(e) => setSourceId(e.target.value)}
+                  required
+                >
+                  {sources.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.emoji} {s.name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
 
-            {incomePreview && (
+            {incomePreview && sources.length > 0 && (
               <div className="modal-split" style={{ display: "block" }}>
                 <div className="modal-split-t">
                   This income will be split as
@@ -289,7 +324,7 @@ export function LogTransactionModal({
               </div>
             )}
 
-            {!plan && amtNum > 0 && (
+            {!plan && amtNum > 0 && sources.length > 0 && (
               <p className="muted" style={{ marginTop: 10 }}>
                 No plan yet. Income still saves. Set a plan in Settings to
                 auto-split into buckets.
@@ -455,11 +490,15 @@ export function LogTransactionModal({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={loading}
+          disabled={loading || (type === "i" && sources.length === 0)}
           onClick={() => save()}
           style={{ marginTop: 16 }}
         >
-          {loading ? "Saving…" : "Save transaction"}
+          {loading
+            ? "Saving…"
+            : type === "i" && sources.length === 0
+              ? "Add a source first"
+              : "Save transaction"}
         </button>
 
         <button type="button" className="btn btn-ghost" onClick={onClose}>

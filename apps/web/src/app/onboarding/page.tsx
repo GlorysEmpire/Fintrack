@@ -5,8 +5,9 @@
  *
  * 1) Choose plan path (default / templates / skip)
  * 2) After a template is chosen: demo preview of ₦100,000 waterfall split
- *    (UI only — never written as real balances)
- * 3) Continue, Skip demo, or auto-advance ~8s → save plan → dashboard
+ *    (UI only — never written as real balances or sources)
+ * 3) Income sources: opt-in generic presets and/or custom — or skip (zero sources)
+ * 4) Continue → save plan + chosen sources → dashboard
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -18,20 +19,31 @@ import {
 } from "@fintrack/domain";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { bucketColor } from "@/lib/bucket-colors";
+import { GENERIC_INCOME_PRESETS } from "@/lib/income-presets";
 
-type View = "choose" | "templates" | "demo";
+type View = "choose" | "templates" | "demo" | "sources";
 
 const DEMO_GROSS = 100_000;
 const DEMO_CURRENCY: CurrencyCode = "NGN";
 /** Auto-continue after this many ms (between 7–10s as specified) */
 const DEMO_AUTO_MS = 8_000;
 
+const CURRENCIES: CurrencyCode[] = ["NGN", "USD", "GBP", "EUR"];
+
+type CustomDraft = {
+  name: string;
+  emoji: string;
+  type: string;
+  currency: CurrencyCode;
+  amount: string;
+};
+
 export default function OnboardingPage() {
   const router = useRouter();
   const [view, setView] = useState<View>("choose");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  /** Pending onboarding body after user picks a template (demo step) */
+  /** Pending onboarding body after user picks a plan (before sources) */
   const [pendingBody, setPendingBody] = useState<Record<string, unknown> | null>(
     null
   );
@@ -41,6 +53,13 @@ export default function OnboardingPage() {
   const [secondsLeft, setSecondsLeft] = useState(
     Math.ceil(DEMO_AUTO_MS / 1000)
   );
+
+  // Sources step (user-owned only)
+  const [selectedPresets, setSelectedPresets] = useState<string[]>([]);
+  const [customDrafts, setCustomDrafts] = useState<CustomDraft[]>([]);
+  const [customName, setCustomName] = useState("");
+  const [customEmoji, setCustomEmoji] = useState("💵");
+  const [customCurrency, setCustomCurrency] = useState<CurrencyCode>("NGN");
 
   const demoLines = useMemo(() => {
     if (!pendingTemplateId) return null;
@@ -83,12 +102,61 @@ export default function OnboardingPage() {
     setError(null);
   }
 
-  const goToDashboard = useCallback(() => {
-    if (!pendingBody || loading) return;
-    void finish(pendingBody);
-  }, [pendingBody, loading, finish]);
+  /** After plan (or skip) → income sources step */
+  function goToSources(body?: Record<string, unknown>) {
+    if (body) setPendingBody(body);
+    setView("sources");
+    setError(null);
+  }
 
-  // Auto-advance timer on demo view
+  function togglePreset(id: string) {
+    setSelectedPresets((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function addCustomSource() {
+    const name = customName.trim();
+    if (!name) return;
+    setCustomDrafts((prev) => [
+      ...prev,
+      {
+        name,
+        emoji: customEmoji.trim() || "💵",
+        type: "other",
+        currency: customCurrency,
+        amount: "0",
+      },
+    ]);
+    setCustomName("");
+    setCustomEmoji("💵");
+  }
+
+  function buildSourcesPayload() {
+    return {
+      presetIds: selectedPresets,
+      customSources: customDrafts.map((c) => ({
+        name: c.name,
+        emoji: c.emoji,
+        type: c.type,
+        currency: c.currency,
+        amount: parseFloat(c.amount) || 0,
+      })),
+    };
+  }
+
+  const completeOnboarding = useCallback(
+    (sourcesOverride?: { presetIds: string[]; customSources: unknown[] }) => {
+      if (!pendingBody || loading) return;
+      const sources = sourcesOverride ?? buildSourcesPayload();
+      void finish({ ...pendingBody, ...sources });
+    },
+    // buildSourcesPayload is local and reads latest state via override when needed
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pendingBody, loading, finish, selectedPresets, customDrafts]
+  );
+
+  // Auto-advance timer on demo view → sources (not dashboard)
   useEffect(() => {
     if (view !== "demo" || !pendingBody || loading) return;
 
@@ -102,14 +170,15 @@ export default function OnboardingPage() {
     }, 250);
 
     const auto = window.setTimeout(() => {
-      goToDashboard();
+      goToSources();
     }, DEMO_AUTO_MS);
 
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(auto);
     };
-  }, [view, pendingBody, loading, goToDashboard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, pendingBody, loading]);
 
   return (
     <AuroraBackground>
@@ -173,7 +242,7 @@ export default function OnboardingPage() {
               type="button"
               className="option"
               disabled={loading}
-              onClick={() => finish({ path: "skip" })}
+              onClick={() => goToSources({ path: "skip" })}
             >
               <span
                 className="tag"
@@ -187,7 +256,8 @@ export default function OnboardingPage() {
               </span>
               <h3>Skip for now · just log income</h3>
               <p>
-                Go straight to the dashboard. No waterfall until you set a plan.
+                No waterfall until you set a plan. You&apos;ll still choose
+                income sources next (or skip those too).
               </p>
             </button>
           </>
@@ -198,7 +268,7 @@ export default function OnboardingPage() {
             <h1>Pick a starting template</h1>
             <p className="sub">
               Next you&apos;ll see a short demo of how ₦100,000 would split.
-              Nothing is saved until you continue.
+              Nothing is saved until you finish setup.
             </p>
 
             {ALL_TEMPLATES.map((tpl) => (
@@ -275,7 +345,6 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            {/* Progress bar for auto-advance */}
             <div
               style={{
                 height: 4,
@@ -298,25 +367,23 @@ export default function OnboardingPage() {
               />
             </div>
             <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
-              {loading
-                ? "Opening your dashboard…"
-                : `Opening dashboard in ${secondsLeft}s · or continue now`}
+              Next: income sources in {secondsLeft}s · or continue now
             </p>
 
             <button
               type="button"
               className="btn btn-primary"
               disabled={loading}
-              onClick={goToDashboard}
+              onClick={() => goToSources()}
               style={{ width: "100%", marginBottom: 8 }}
             >
-              {loading ? "Saving…" : "Continue to dashboard"}
+              Continue
             </button>
             <button
               type="button"
               className="btn btn-ghost"
               disabled={loading}
-              onClick={goToDashboard}
+              onClick={() => goToSources()}
               style={{ width: "100%" }}
             >
               Skip demo
@@ -324,8 +391,155 @@ export default function OnboardingPage() {
           </>
         )}
 
+        {view === "sources" && (
+          <>
+            <h1>Where does your income come from?</h1>
+            <p className="sub">
+              Optional. Pick common sources, add your own, or skip entirely.
+              Nothing is invented for you — empty is fine.
+            </p>
+
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-t">Common sources</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {GENERIC_INCOME_PRESETS.map((p) => {
+                  const on = selectedPresets.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="option"
+                      disabled={loading}
+                      onClick={() => togglePreset(p.id)}
+                      style={{
+                        margin: 0,
+                        textAlign: "left",
+                        borderColor: on
+                          ? "color-mix(in oklch, var(--g) 50%, transparent)"
+                          : undefined,
+                        background: on
+                          ? "color-mix(in oklch, var(--g) 10%, transparent)"
+                          : undefined,
+                      }}
+                    >
+                      <h3 style={{ margin: 0, fontSize: 15 }}>
+                        {on ? "✓ " : ""}
+                        {p.emoji} {p.name}
+                      </h3>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-t">Add custom</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  className="minp"
+                  placeholder="Name (e.g. Side hustle)"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  style={{ flex: 2, minWidth: 120 }}
+                  disabled={loading}
+                />
+                <input
+                  className="minp"
+                  placeholder="💵"
+                  value={customEmoji}
+                  onChange={(e) => setCustomEmoji(e.target.value)}
+                  style={{ width: 56 }}
+                  disabled={loading}
+                  maxLength={4}
+                  aria-label="Emoji"
+                />
+                <select
+                  className="minp"
+                  value={customCurrency}
+                  onChange={(e) =>
+                    setCustomCurrency(e.target.value as CurrencyCode)
+                  }
+                  disabled={loading}
+                >
+                  {CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={addCustomSource}
+                  disabled={loading || !customName.trim()}
+                >
+                  Add
+                </button>
+              </div>
+              {customDrafts.length > 0 && (
+                <ul style={{ marginTop: 12, paddingLeft: 18 }}>
+                  {customDrafts.map((c, i) => (
+                    <li key={`${c.name}-${i}`} style={{ marginBottom: 6 }}>
+                      {c.emoji} {c.name} · {c.currency}{" "}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{
+                          display: "inline",
+                          padding: "0 6px",
+                          fontSize: 12,
+                        }}
+                        onClick={() =>
+                          setCustomDrafts((prev) =>
+                            prev.filter((_, j) => j !== i)
+                          )
+                        }
+                        disabled={loading}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+              Selected:{" "}
+              {selectedPresets.length + customDrafts.length === 0
+                ? "none (you can add later on Income)"
+                : `${selectedPresets.length + customDrafts.length} source(s)`}
+            </p>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={loading}
+              onClick={() => completeOnboarding()}
+              style={{ width: "100%", marginBottom: 8 }}
+            >
+              {loading
+                ? "Saving…"
+                : selectedPresets.length + customDrafts.length === 0
+                  ? "Continue with no sources"
+                  : "Save sources & continue"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled={loading}
+              onClick={() =>
+                completeOnboarding({ presetIds: [], customSources: [] })
+              }
+              style={{ width: "100%" }}
+            >
+              Skip · zero sources
+            </button>
+          </>
+        )}
+
         {error && <div className="error">{error}</div>}
-        {loading && view !== "demo" && (
+        {loading && view !== "demo" && view !== "sources" && (
           <p className="muted" style={{ marginTop: 16 }}>
             Saving…
           </p>

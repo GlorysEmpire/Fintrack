@@ -1,6 +1,6 @@
 /**
  * PATCH  /api/sources/:id — update expected amount / name / currency
- * DELETE /api/sources/:id — remove source (if not the last one)
+ * DELETE /api/sources/:id — remove source (zero sources is a valid state)
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -52,13 +52,6 @@ export async function DELETE(
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await ctx.params;
-  const count = await prisma.incomeSource.count({ where: { userId: user.id } });
-  if (count <= 1) {
-    return NextResponse.json(
-      { ok: false, error: "Keep at least one income source." },
-      { status: 400 }
-    );
-  }
   const existing = await prisma.incomeSource.findFirst({
     where: { id, userId: user.id },
   });

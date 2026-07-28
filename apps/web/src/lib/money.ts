@@ -1,20 +1,41 @@
 /**
- * Server-side helpers: load user FX rates, opening balances, default income sources.
+ * Server-side helpers: FX rates, opening balances, income-source creates.
+ *
+ * Income sources are user-owned. NEVER auto-seed on GET / first login.
+ * Presets: see income-presets.ts — only applied when the user opts in.
  */
 import { prisma } from "./db";
 import { DEFAULT_FX } from "@fintrack/domain";
+import type { IncomeSourceInput } from "./income-presets";
 
-/** Default income sources (same spirit as the legacy FinTrack app) */
-export const DEFAULT_INCOME_SOURCES = [
-  { name: "Software Development", type: "main", emoji: "💻", currency: "NGN", amount: 0 },
-  { name: "Trading", type: "business", emoji: "📈", currency: "NGN", amount: 0 },
-  { name: "Teaching & Signals", type: "business", emoji: "📡", currency: "NGN", amount: 0 },
-  { name: "Crypto", type: "investment", emoji: "₿", currency: "USD", amount: 0 },
-  { name: "Real Estate", type: "investment", emoji: "🏠", currency: "NGN", amount: 0 },
-  { name: "Gold", type: "investment", emoji: "🥇", currency: "USD", amount: 0 },
-  { name: "Stocks", type: "investment", emoji: "📊", currency: "USD", amount: 0 },
-  { name: "Gift", type: "gift", emoji: "🎁", currency: "NGN", amount: 0 },
-];
+export {
+  GENERIC_INCOME_PRESETS,
+  resolveIncomeSourceInputs,
+  type GenericPresetId,
+  type IncomeSourceInput,
+} from "./income-presets";
+
+/**
+ * Explicit create only — called from onboarding / user actions.
+ * Empty list is a no-op (valid: user has zero sources).
+ */
+export async function createIncomeSourcesForUser(
+  userId: string,
+  sources: IncomeSourceInput[]
+) {
+  if (sources.length === 0) return { created: 0 };
+  await prisma.incomeSource.createMany({
+    data: sources.map((s) => ({
+      userId,
+      name: s.name,
+      type: s.type,
+      emoji: s.emoji,
+      currency: s.currency,
+      amount: s.amount,
+    })),
+  });
+  return { created: sources.length };
+}
 
 export function parseFx(fxRatesJson: string): Record<string, number> {
   try {
@@ -31,13 +52,4 @@ export function parseOpeningBalances(json: string): Record<string, number> {
   } catch {
     return {};
   }
-}
-
-/** Seed default sources once when user has none (first login / first open of log modal) */
-export async function ensureDefaultSources(userId: string) {
-  const count = await prisma.incomeSource.count({ where: { userId } });
-  if (count > 0) return;
-  await prisma.incomeSource.createMany({
-    data: DEFAULT_INCOME_SOURCES.map((s) => ({ ...s, userId })),
-  });
 }

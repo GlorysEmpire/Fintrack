@@ -1,5 +1,6 @@
 /**
  * Income tab — sources + this month logged by source.
+ * Never auto-seeds sources.
  */
 import { redirect } from "next/navigation";
 import {
@@ -12,11 +13,9 @@ import {
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unreadCount } from "@/lib/inbox";
-import {
-  ensureDefaultSources,
-  parseFx,
-} from "@/lib/money";
+import { parseFx } from "@/lib/money";
 import { AppShell } from "@/components/AppShell";
+import { IncomeSourcesManager } from "@/components/IncomeSourcesManager";
 import Link from "next/link";
 
 export default async function IncomePage() {
@@ -24,7 +23,6 @@ export default async function IncomePage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  await ensureDefaultSources(user.id);
   const fx = parseFx(user.fxRates);
   const base = user.baseCurrency as CurrencyCode;
 
@@ -53,6 +51,25 @@ export default async function IncomePage() {
     0
   );
 
+  const sourcesWithLogged = sources.map((s) => {
+    const loggedBase = month
+      .filter((t) => t.sourceId === s.id)
+      .reduce(
+        (sum, t) =>
+          sum + amountInBase(t.amount, t.currency, user.baseCurrency, fx),
+        0
+      );
+    return {
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      emoji: s.emoji,
+      currency: s.currency,
+      amount: s.amount,
+      loggedBase,
+    };
+  });
+
   return (
     <AppShell
       baseCurrency={user.baseCurrency}
@@ -74,35 +91,10 @@ export default async function IncomePage() {
         </div>
       </div>
 
-      <div className="sec">Income sources</div>
-      {sources.map((s) => {
-        const logged = month
-          .filter((t) => t.sourceId === s.id)
-          .reduce(
-            (sum, t) =>
-              sum + amountInBase(t.amount, t.currency, user.baseCurrency, fx),
-            0
-          );
-        return (
-          <div className="card" key={s.id}>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ fontSize: 22 }}>{s.emoji}</div>
-              <div style={{ flex: 1 }}>
-                <strong>{s.name}</strong>
-                <div className="muted">
-                  {s.type} · expected {formatMoney(s.amount, s.currency as CurrencyCode)}/{s.currency}
-                </div>
-              </div>
-              <div style={{ textAlign: "right", color: "var(--g)", fontWeight: 700 }}>
-                {formatMoney(logged, base)}
-                <div className="muted" style={{ fontWeight: 400 }}>
-                  logged
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
+      <IncomeSourcesManager
+        sources={sourcesWithLogged}
+        baseCurrency={user.baseCurrency}
+      />
 
       <p className="muted" style={{ marginTop: 16 }}>
         Log income from Overview with the + button.{" "}

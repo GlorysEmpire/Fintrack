@@ -12,19 +12,13 @@ import {
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getUserPlan } from "@/lib/plan";
-import {
-  ensureDefaultSources,
-  parseFx,
-  parseOpeningBalances,
-} from "@/lib/money";
+import { parseFx, parseOpeningBalances } from "@/lib/money";
 
 export async function GET() {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
-
-  await ensureDefaultSources(user.id);
 
   const plan = await getUserPlan(user.id);
   const planRow = await prisma.budgetPlan.findUnique({
