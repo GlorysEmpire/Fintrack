@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-function easeOutCubic(t: number) {
-  return 1 - Math.pow(1 - t, 3);
+/** easeOutExpo */
+function easeOutExpo(t: number) {
+  return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
 }
 
 function prefersReducedMotion() {
@@ -12,10 +13,10 @@ function prefersReducedMotion() {
 }
 
 /**
- * Animates a number from its previous value to `value` over 800ms.
- * Jumps immediately when prefers-reduced-motion is set.
+ * Animates a number from previous → new over durationMs (default 1200).
+ * Jumps immediately when prefers-reduced-motion.
  */
-export function useCountUp(value: number, durationMs = 800): number {
+export function useCountUp(value: number, durationMs = 1200): number {
   const [display, setDisplay] = useState(value);
   const fromRef = useRef(value);
   const rafRef = useRef<number | null>(null);
@@ -33,7 +34,7 @@ export function useCountUp(value: number, durationMs = 800): number {
 
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / durationMs);
-      const eased = easeOutCubic(t);
+      const eased = easeOutExpo(t);
       setDisplay(from + (to - from) * eased);
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick);
