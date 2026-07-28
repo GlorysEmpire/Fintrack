@@ -9,7 +9,7 @@
  * 3) Income sources: opt-in generic presets and/or custom — or skip (zero sources)
  * 4) Continue → save plan + chosen sources → dashboard
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ALL_TEMPLATES,
@@ -60,6 +60,7 @@ export default function OnboardingPage() {
   const [customName, setCustomName] = useState("");
   const [customEmoji, setCustomEmoji] = useState("💵");
   const [customCurrency, setCustomCurrency] = useState<CurrencyCode>("NGN");
+  const actionsRef = useRef<HTMLDivElement | null>(null);
 
   const demoLines = useMemo(() => {
     if (!pendingTemplateId) return null;
@@ -180,9 +181,18 @@ export default function OnboardingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, pendingBody, loading]);
 
+  // Long steps: keep sticky actions reachable; gently scroll actions into view
+  useEffect(() => {
+    if (view !== "demo" && view !== "sources") return;
+    const id = window.requestAnimationFrame(() => {
+      actionsRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [view]);
+
   return (
     <AuroraBackground>
-      <div className="container relative z-10 mx-auto max-w-lg px-6 py-12">
+      <div className="container relative z-10 mx-auto max-w-lg px-6 pt-12 pb-28">
         <div className="logo">
           <span className="logo-dot" /> FinTrack setup
         </div>
@@ -370,24 +380,34 @@ export default function OnboardingPage() {
               Next: income sources in {secondsLeft}s · or continue now
             </p>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={loading}
-              onClick={() => goToSources()}
-              style={{ width: "100%", marginBottom: 8 }}
+            <div
+              ref={actionsRef}
+              className="sticky bottom-0 z-20 -mx-6 mt-4 border-t border-white/10 px-6 pt-3"
+              style={{
+                paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
+                background:
+                  "linear-gradient(to top, oklch(0.12 0.02 160) 70%, transparent)",
+              }}
             >
-              Continue
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={loading}
-              onClick={() => goToSources()}
-              style={{ width: "100%" }}
-            >
-              Skip demo
-            </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={loading}
+                onClick={() => goToSources()}
+                style={{ width: "100%", marginBottom: 8 }}
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={loading}
+                onClick={() => goToSources()}
+                style={{ width: "100%" }}
+              >
+                Skip demo
+              </button>
+            </div>
           </>
         )}
 
@@ -511,30 +531,40 @@ export default function OnboardingPage() {
                 : `${selectedPresets.length + customDrafts.length} source(s)`}
             </p>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={loading}
-              onClick={() => completeOnboarding()}
-              style={{ width: "100%", marginBottom: 8 }}
+            <div
+              ref={actionsRef}
+              className="sticky bottom-0 z-20 -mx-6 mt-4 border-t border-white/10 px-6 pt-3"
+              style={{
+                paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
+                background:
+                  "linear-gradient(to top, oklch(0.12 0.02 160) 70%, transparent)",
+              }}
             >
-              {loading
-                ? "Saving…"
-                : selectedPresets.length + customDrafts.length === 0
-                  ? "Continue with no sources"
-                  : "Save sources & continue"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={loading}
-              onClick={() =>
-                completeOnboarding({ presetIds: [], customSources: [] })
-              }
-              style={{ width: "100%" }}
-            >
-              Skip · zero sources
-            </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={loading}
+                onClick={() => completeOnboarding()}
+                style={{ width: "100%", marginBottom: 8 }}
+              >
+                {loading
+                  ? "Saving…"
+                  : selectedPresets.length + customDrafts.length === 0
+                    ? "Continue with no sources"
+                    : "Save sources & continue"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={loading}
+                onClick={() =>
+                  completeOnboarding({ presetIds: [], customSources: [] })
+                }
+                style={{ width: "100%" }}
+              >
+                Skip · zero sources
+              </button>
+            </div>
           </>
         )}
 
