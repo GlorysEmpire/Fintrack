@@ -1,23 +1,18 @@
 /**
- * Income tab — sources + this month logged by source.
+ * Income tab — glass sources + month totals (UI).
  */
 import { redirect } from "next/navigation";
 import {
   amountInBase,
   filterMonthTxs,
-  formatMoney,
   type CurrencyCode,
   type MoneyTx,
 } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unreadCount } from "@/lib/inbox";
-import {
-  ensureDefaultSources,
-  parseFx,
-} from "@/lib/money";
-import { AppShell } from "@/components/AppShell";
-import Link from "next/link";
+import { ensureDefaultSources, parseFx } from "@/lib/money";
+import { IncomeClient } from "@/components/IncomeClient";
 
 export default async function IncomePage() {
   const user = await getSessionUser();
@@ -41,7 +36,7 @@ export default async function IncomePage() {
   ]);
 
   const money: MoneyTx[] = txs.map((t) => ({
-    type: "i",
+    type: "i" as const,
     amount: t.amount,
     currency: t.currency,
     sourceId: t.sourceId,
@@ -54,60 +49,32 @@ export default async function IncomePage() {
   );
 
   return (
-    <AppShell
+    <IncomeClient
       baseCurrency={user.baseCurrency}
       email={user.email}
       inboxUnread={inboxUnread}
-    >
-      <div className="metric-grid">
-        <div className="metric">
-          <div className="lbl">Logged this month</div>
-          <div className="val" style={{ color: "var(--g)" }}>
-            {formatMoney(total, base)}
-          </div>
-        </div>
-        <div className="metric">
-          <div className="lbl">Sources</div>
-          <div className="val" style={{ fontSize: 18 }}>
-            {sources.length}
-          </div>
-        </div>
-      </div>
-
-      <div className="sec">Income sources</div>
-      {sources.map((s) => {
-        const logged = month
+      total={total}
+      sources={sources.map((s) => ({
+        id: s.id,
+        name: s.name,
+        emoji: s.emoji,
+        currency: s.currency,
+        logged: month
           .filter((t) => t.sourceId === s.id)
           .reduce(
             (sum, t) =>
               sum + amountInBase(t.amount, t.currency, user.baseCurrency, fx),
             0
-          );
-        return (
-          <div className="card" key={s.id}>
-            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <div style={{ fontSize: 22 }}>{s.emoji}</div>
-              <div style={{ flex: 1 }}>
-                <strong>{s.name}</strong>
-                <div className="muted">
-                  {s.type} · expected {formatMoney(s.amount, s.currency as CurrencyCode)}/{s.currency}
-                </div>
-              </div>
-              <div style={{ textAlign: "right", color: "var(--g)", fontWeight: 700 }}>
-                {formatMoney(logged, base)}
-                <div className="muted" style={{ fontWeight: 400 }}>
-                  logged
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-
-      <p className="muted" style={{ marginTop: 16 }}>
-        Log income from Overview with the + button.{" "}
-        <Link href="/dashboard">Go to Overview →</Link>
-      </p>
-    </AppShell>
+          ),
+      }))}
+      recent={txs.slice(0, 12).map((t) => ({
+        id: t.id,
+        amount: t.amount,
+        currency: t.currency,
+        sourceId: t.sourceId,
+        note: t.note,
+        date: t.date.toISOString(),
+      }))}
+    />
   );
 }

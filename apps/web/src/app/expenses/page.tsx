@@ -1,15 +1,12 @@
 /**
- * Expenses tab — full list of expense transactions this month.
+ * Expenses tab — glass transactions table (UI PR3).
  */
 import { redirect } from "next/navigation";
-import { formatMoney, type CurrencyCode } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unreadCount } from "@/lib/inbox";
 import { getUserPlan } from "@/lib/plan";
-import { AppShell } from "@/components/AppShell";
-import { formatTxDate } from "@/lib/format-date";
-import Link from "next/link";
+import { TransactionsClient } from "@/components/TransactionsClient";
 
 export default async function ExpensesPage() {
   const user = await getSessionUser();
@@ -30,60 +27,26 @@ export default async function ExpensesPage() {
   ]);
 
   return (
-    <AppShell
+    <TransactionsClient
       baseCurrency={user.baseCurrency}
       email={user.email}
       inboxUnread={inboxUnread}
-    >
-      <h1 style={{ fontSize: 20, marginBottom: 8 }}>Expenses this month</h1>
-      <p className="sub">
-        Overrides are tagged. Steward messages land in{" "}
-        <Link href="/inbox">Inbox</Link>.
-      </p>
-
-      <div className="card">
-        {txs.length === 0 ? (
-          <div className="empty">
-            No expenses yet.{" "}
-            <Link href="/dashboard">Log one from Overview →</Link>
-          </div>
-        ) : (
-          txs.map((t) => {
-            const bucket =
-              plan?.buckets.find((b) => b.id === t.bucketId) || null;
-            return (
-              <div className="tx-item" key={t.id}>
-                <div>
-                  <div className="tx-name">
-                    {bucket
-                      ? `${bucket.emoji} ${bucket.name}`
-                      : t.bucketId || "Expense"}
-                    {t.note ? (
-                      <span className="muted"> · {t.note}</span>
-                    ) : null}
-                    {t.override && (
-                      <span className="pill pill-y" style={{ marginLeft: 6 }}>
-                        override
-                      </span>
-                    )}
-                  </div>
-                  <div className="tx-meta">
-                    {formatTxDate(t.date)}
-                    {t.reason ? ` · “${t.reason}”` : ""}
-                  </div>
-                </div>
-                <div className="amt-neg">
-                  −
-                  {formatMoney(
-                    t.amount,
-                    t.currency as CurrencyCode
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </AppShell>
+      buckets={(plan?.buckets || []).map((b) => ({
+        id: b.id,
+        name: b.name,
+        emoji: b.emoji,
+      }))}
+      rows={txs.map((t) => ({
+        id: t.id,
+        amount: t.amount,
+        currency: t.currency,
+        bucketId: t.bucketId,
+        note: t.note,
+        reason: t.reason,
+        override: t.override,
+        date: t.date.toISOString(),
+        category: t.category,
+      }))}
+    />
   );
 }

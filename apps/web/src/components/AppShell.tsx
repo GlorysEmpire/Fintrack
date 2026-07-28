@@ -14,9 +14,11 @@ import {
   Inbox,
   LayoutDashboard,
   LogOut,
+  PieChart,
   Search,
   Settings,
   Sparkles,
+  Target,
   Wallet,
 } from "lucide-react";
 import { formatLongDate } from "@/lib/format-date";
@@ -28,8 +30,10 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/income", label: "Income", icon: Wallet },
-  { href: "/expenses", label: "Expenses", icon: ArrowLeftRight },
-  { href: "/settings", label: "Plan", icon: Settings },
+  { href: "/expenses", label: "Transactions", icon: ArrowLeftRight },
+  { href: "/budgets", label: "Budgets", icon: PieChart },
+  { href: "/goals", label: "Goals", icon: Target },
+  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/advisor", label: "Advisor", icon: Sparkles },
   { href: "/inbox", label: "Inbox", icon: Inbox },
 ] as const;
