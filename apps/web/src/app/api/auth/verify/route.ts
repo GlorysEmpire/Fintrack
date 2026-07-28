@@ -8,7 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { setSessionCookie, verifyOtp } from "@/lib/auth";
+import { setSessionCookie, toPublicUser, verifyOtp } from "@/lib/auth";
 import {
   clientIp,
   retryAfterSeconds,
@@ -57,11 +57,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      user: {
-        id: result.user.id,
-        email: result.user.email,
-        onboarding: result.user.onboarding,
-      },
+      user: toPublicUser(result.user),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Invalid request";

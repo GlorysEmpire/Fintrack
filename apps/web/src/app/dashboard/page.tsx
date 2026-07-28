@@ -12,11 +12,7 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unreadCount } from "@/lib/inbox";
 import { getUserPlan } from "@/lib/plan";
-import {
-  ensureDefaultSources,
-  parseFx,
-  parseOpeningBalances,
-} from "@/lib/money";
+import { parseFx, parseOpeningBalances } from "@/lib/money";
 import { getUserDashboardLayout } from "@/lib/dashboard-layout";
 import { DashboardClient } from "@/components/DashboardClient";
 
@@ -24,8 +20,6 @@ export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
-
-  await ensureDefaultSources(user.id);
 
   const plan = await getUserPlan(user.id);
   const planRow = await prisma.budgetPlan.findUnique({
@@ -106,6 +100,7 @@ export default async function DashboardPage() {
       email={user.email}
       baseCurrency={user.baseCurrency}
       onboarding={user.onboarding}
+      hasPassword={Boolean(user.passwordHash)}
       plan={plan}
       fx={fx}
       sources={sources.map((s) => ({

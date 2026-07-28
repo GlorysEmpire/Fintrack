@@ -121,6 +121,30 @@ export const verifyIpLimiter = makeLimiter(
   "ft:otp:verify-ip"
 );
 
+/** 5 password login attempts per email per 15 minutes */
+export const loginEmailLimiter = makeLimiter(
+  5,
+  "15 m",
+  15 * 60 * 1000,
+  "ft:login:email"
+);
+
+/** 20 password login attempts per IP per 15 minutes */
+export const loginIpLimiter = makeLimiter(
+  20,
+  "15 m",
+  15 * 60 * 1000,
+  "ft:login:ip"
+);
+
+/** 5 set-password attempts per email per 15 minutes */
+export const setPasswordEmailLimiter = makeLimiter(
+  5,
+  "15 m",
+  15 * 60 * 1000,
+  "ft:set-password:email"
+);
+
 /** Client IP from reverse-proxy headers (Vercel / similar). */
 export function clientIp(req: Request): string {
   const xff = req.headers.get("x-forwarded-for");

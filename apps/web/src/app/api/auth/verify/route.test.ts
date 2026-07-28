@@ -6,6 +6,17 @@ const setSessionCookie = vi.fn();
 vi.mock("@/lib/auth", () => ({
   verifyOtp: (...args: unknown[]) => verifyOtp(...args),
   setSessionCookie: (...args: unknown[]) => setSessionCookie(...args),
+  toPublicUser: (user: {
+    id: string;
+    email: string;
+    onboarding: string;
+    passwordHash?: string | null;
+  }) => ({
+    id: user.id,
+    email: user.email,
+    onboarding: user.onboarding,
+    hasPassword: Boolean(user.passwordHash),
+  }),
 }));
 
 describe("POST /api/auth/verify", () => {

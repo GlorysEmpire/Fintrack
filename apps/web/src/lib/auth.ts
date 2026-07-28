@@ -1,22 +1,42 @@
 /**
- * Auth helpers — email one-time codes (OTP) + cookie sessions.
+ * Auth helpers — email OTP + password + cookie sessions.
  *
- * Flow:
- *  1. User enters email → createOtp() stores code + sends email
- *  2. User enters code → verifyOtp() creates/finds User + Session
- *  3. Session token in httpOnly cookie (ft_session)
+ * Flows:
+ *  1. OTP: request code → verifyOtp() → User + Session
+ *  2. Password: loginWithPassword() → Session (user must have passwordHash)
+ *  3. Set / reset password: consumeOtp() + setUserPassword() (OTP identity proof)
  *
- * Later optional: 2FA authenticator, blockchain-linked identity.
+ * Session token in httpOnly cookie (ft_session).
+ * Never return passwordHash to clients.
  */
 import { cookies } from "next/headers";
 import { prisma } from "./db";
 import { isDevShowCode, sendLoginCodeEmail } from "./email";
+import { hashPassword, validatePasswordStrength } from "./password";
 import { randomBytes, randomInt } from "crypto";
+import type { User } from "@prisma/client";
 
 export const SESSION_COOKIE = "ft_session";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+
+export type PublicUser = {
+  id: string;
+  email: string;
+  onboarding: string;
+  hasPassword: boolean;
+};
+
+export function toPublicUser(user: User): PublicUser {
+  return {
+    id: user.id,
+    email: user.email,
+    onboarding: user.onboarding,
+    hasPassword: Boolean(user.passwordHash),
+  };
+}
 
 export function generateOtpCode(): string {
   return String(randomInt(100000, 999999));
@@ -55,14 +75,14 @@ export async function createOtp(email: string) {
   };
 }
 
-const OTP_MAX_ATTEMPTS = 5;
-
 /**
- * Verify a login code.
- * Wrong guesses increment EmailOtp.attempts; at 5 the code is consumed
- * (invalidated) so a later correct guess still fails.
+ * Validate + consume a live OTP. Does not create a user or session.
+ * Wrong guesses increment attempts; at 5 the code is invalidated.
  */
-export async function verifyOtp(email: string, code: string) {
+export async function consumeOtp(
+  email: string,
+  code: string
+): Promise<{ email: string } | null> {
   const normalized = email.trim().toLowerCase();
   const submitted = code.trim();
 
@@ -83,7 +103,6 @@ export async function verifyOtp(email: string, code: string) {
       where: { id: otp.id },
       data: {
         attempts,
-        // Invalidate after 5 wrong guesses
         ...(attempts >= OTP_MAX_ATTEMPTS ? { consumed: true } : {}),
       },
     });
@@ -95,20 +114,81 @@ export async function verifyOtp(email: string, code: string) {
     data: { consumed: true },
   });
 
+  return { email: normalized };
+}
+
+export async function findOrCreateUser(email: string): Promise<User> {
+  const normalized = email.trim().toLowerCase();
   let user = await prisma.user.findUnique({ where: { email: normalized } });
   if (!user) {
     user = await prisma.user.create({
       data: { email: normalized },
     });
   }
+  return user;
+}
 
+export async function createSessionForUser(user: User) {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   await prisma.session.create({
     data: { token, userId: user.id, expiresAt },
   });
-
   return { user, token, expiresAt };
+}
+
+/**
+ * Verify a login code → find/create user + session.
+ */
+export async function verifyOtp(email: string, code: string) {
+  const consumed = await consumeOtp(email, code);
+  if (!consumed) return null;
+
+  const user = await findOrCreateUser(consumed.email);
+  return createSessionForUser(user);
+}
+
+/**
+ * Email + password login. Generic failure message for unknown user / bad password.
+ */
+export async function loginWithPassword(email: string, password: string) {
+  const normalized = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: normalized } });
+
+  // Constant-ish path: always run verify when hash present; never reveal which failed.
+  if (!user?.passwordHash) {
+    return null;
+  }
+
+  const { verifyPassword } = await import("./password");
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) return null;
+
+  return createSessionForUser(user);
+}
+
+/**
+ * Set or replace password after successful OTP identity proof.
+ * Creates the user if this is their first interaction (forgot on new email).
+ */
+export async function setUserPassword(
+  email: string,
+  password: string
+): Promise<{ user: User } | { error: string }> {
+  const strength = validatePasswordStrength(password);
+  if (!strength.ok) {
+    return { error: strength.error || "Invalid password" };
+  }
+
+  const hash = await hashPassword(password);
+  const normalized = email.trim().toLowerCase();
+  const user = await prisma.user.upsert({
+    where: { email: normalized },
+    create: { email: normalized, passwordHash: hash },
+    update: { passwordHash: hash },
+  });
+
+  return { user };
 }
 
 export async function setSessionCookie(token: string, expiresAt: Date) {

@@ -28,10 +28,13 @@ enum HouseholdRole {
 }
 
 // Someone who can sign in. Created on first successful OTP verify.
+// passwordHash is optional — OTP-only users keep null until they set a password.
 model User {
   id           String  @id @default(cuid())
   email        String  @unique
   name         String?
+  /// Argon2id PHC string. Null = OTP-only account (legacy / not set yet).
+  passwordHash String?
   baseCurrency String  @default("NGN")
   /// pending = must see onboarding · completed = has plan · skipped = no plan yet
   onboarding   String  @default("pending")

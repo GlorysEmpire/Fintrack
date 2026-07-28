@@ -28,6 +28,7 @@ import { DashboardCustomize } from "./DashboardCustomize";
 import { AppShell } from "./AppShell";
 import { EmptyState } from "./EmptyState";
 import { Money } from "./Money";
+import { SetPasswordPrompt } from "./SetPasswordPrompt";
 import { bucketColor } from "@/lib/bucket-colors";
 import { formatTxDate } from "@/lib/format-date";
 import { useCountUp } from "@/hooks/useCountUp";
@@ -57,6 +58,8 @@ type Props = {
   email: string;
   baseCurrency: string;
   onboarding: string;
+  /** false for OTP-only accounts — soft prompt to set a password */
+  hasPassword: boolean;
   plan: BudgetPlan | null;
   fx: Record<string, number>;
   sources: Source[];
@@ -91,6 +94,7 @@ export function DashboardClient(props: Props) {
     email,
     baseCurrency,
     onboarding,
+    hasPassword,
     plan,
     fx,
     sources,
@@ -102,6 +106,7 @@ export function DashboardClient(props: Props) {
     layout,
     forecastNext = null,
   } = props;
+  void onboarding;
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -624,6 +629,8 @@ export function DashboardClient(props: Props) {
       <div className="dash-toolbar">
         <DashboardCustomize layout={layout} />
       </div>
+
+      <SetPasswordPrompt hasPassword={hasPassword} />
 
       {sections.map((id) => renderSection(id))}
       <ForecastCard />

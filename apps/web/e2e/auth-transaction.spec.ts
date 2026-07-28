@@ -10,6 +10,8 @@ test("login with OTP, log a transaction, see it on dashboard", async ({
   const email = `e2e-${Date.now()}@example.com`;
 
   await page.goto("/login");
+  // Primary login is password; e2e uses OTP (dev code)
+  await page.getByRole("button", { name: /sign in with email code/i }).click();
   await page.getByPlaceholder("you@example.com").fill(email);
   await page.getByRole("button", { name: /send login code/i }).click();
 

@@ -36,8 +36,14 @@ export default async function SettingsPage() {
         <h2>Account</h2>
         <p style={{ marginTop: 6 }}>{user.email}</p>
         <p className="muted" style={{ marginTop: 4 }}>
-          Login: email code. Later optional: 2FA authenticator, blockchain
-          identity.
+          {user.passwordHash
+            ? "Sign-in: email + password (email codes still work as backup)."
+            : "Sign-in: email code only. Set a password for faster logins."}
+        </p>
+        <p style={{ marginTop: 12 }}>
+          <a href="/set-password" className="btn btn-ghost" style={{ display: "inline-block" }}>
+            {user.passwordHash ? "Change password" : "Set password"}
+          </a>
         </p>
       </div>
 
