@@ -97,9 +97,12 @@ function centerTotalPlugin(totalLabel: string): Plugin<"doughnut"> {
 export function DashboardCharts({
   waterfall,
   baseCurrency,
+  remainingMode = false,
 }: {
   waterfall: WaterfallResult;
   baseCurrency: string;
+  /** When true, line amounts are remaining balances (not allocation) */
+  remainingMode?: boolean;
 }) {
   const donutRef = useRef<HTMLCanvasElement>(null);
   const barRef = useRef<HTMLCanvasElement>(null);
@@ -114,7 +117,11 @@ export function DashboardCharts({
     const labels = waterfall.lines.map((l) => `${l.emoji} ${l.name}`);
     const vals = waterfall.lines.map((l) => Math.round(l.allocated));
     const cols = waterfall.lines.map((l, i) => bucketColor(l.bucketId, i));
-    const totalLabel = formatMoney(gross, base);
+    const sumVals = vals.reduce((s, v) => s + v, 0);
+    const totalLabel = formatMoney(
+      remainingMode ? sumVals : gross,
+      base
+    );
 
     donutChart.current?.destroy();
     barChart.current?.destroy();
@@ -144,8 +151,10 @@ export function DashboardCharts({
             callbacks: {
               label: (ctx) => {
                 const raw = Number(ctx.raw) || 0;
-                return `${ctx.label}: ${formatMoney(raw, base)} (${
-                  gross > 0 ? ((raw / gross) * 100).toFixed(1) : 0
+                const denom = remainingMode ? sumVals : gross;
+                const suffix = remainingMode ? " remaining" : "";
+                return `${ctx.label}: ${formatMoney(raw, base)}${suffix} (${
+                  denom > 0 ? ((raw / denom) * 100).toFixed(1) : 0
                 }%)`;
               },
             },
@@ -222,12 +231,16 @@ export function DashboardCharts({
       donutChart.current?.destroy();
       barChart.current?.destroy();
     };
-  }, [waterfall, base, gross]);
+  }, [waterfall, base, gross, remainingMode]);
 
   return (
     <div className="two-col">
-      <div className="card glass-card">
-        <div className="card-t">Income allocation</div>
+      <div className="card">
+        <div className="card-t">
+          {remainingMode
+            ? "Income allocation (remaining)"
+            : "Income allocation"}
+        </div>
         <div className="chart-wrap">
           <canvas id="donut-c" ref={donutRef} />
         </div>
@@ -243,7 +256,7 @@ export function DashboardCharts({
           ))}
         </div>
       </div>
-      <div className="card glass-card">
+      <div className="card">
         <div className="card-t">Monthly cash flow</div>
         <div className="chart-wrap">
           <canvas id="flow-c" ref={barRef} />

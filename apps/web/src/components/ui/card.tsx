@@ -10,7 +10,8 @@ export function Card({
     <div
       className={cn(
         "rounded-xl border border-border bg-card text-card-foreground shadow-sm",
-        glass && "glass-card",
+        glass &&
+          "bg-card/60 backdrop-blur-xl border-white/6 shadow-[var(--shadow-glass)]",
         className
       )}
       {...props}

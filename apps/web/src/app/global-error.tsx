@@ -19,8 +19,8 @@ export default function GlobalError({
         style={{
           margin: 0,
           minHeight: "100vh",
-          background: "oklch(0.16 0.04 250)",
-          color: "oklch(0.98 0.01 240)",
+          background: "#0f0f0f",
+          color: "#f0f0f0",
           fontFamily:
             "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
           display: "flex",
@@ -33,8 +33,8 @@ export default function GlobalError({
           style={{
             maxWidth: 420,
             width: "100%",
-            background: "oklch(0.20 0.05 255)",
-            border: "1px solid oklch(1 0 0 / 0.08)",
+            background: "#1a1a1a",
+            border: "1px solid #2e2e2e",
             borderRadius: 16,
             padding: 28,
           }}
@@ -45,7 +45,7 @@ export default function GlobalError({
               fontWeight: 700,
               letterSpacing: "0.12em",
               textTransform: "uppercase",
-              color: "oklch(0.75 0.16 235)",
+              color: "#22c98a",
               marginBottom: 12,
             }}
           >
@@ -54,7 +54,7 @@ export default function GlobalError({
           <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>
             Something broke
           </h1>
-          <p style={{ color: "oklch(0.70 0.03 240)", fontSize: 14, lineHeight: 1.5 }}>
+          <p style={{ color: "#999", fontSize: 14, lineHeight: 1.5 }}>
             A critical error occurred. Please try again.
           </p>
           <button
@@ -66,8 +66,8 @@ export default function GlobalError({
               padding: 12,
               border: "none",
               borderRadius: 8,
-              background: "oklch(0.75 0.16 235)",
-              color: "oklch(0.16 0.04 250)",
+              background: "#22c98a",
+              color: "#000",
               fontWeight: 700,
               cursor: "pointer",
             }}

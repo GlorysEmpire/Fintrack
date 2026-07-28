@@ -19,13 +19,7 @@ export function Money({
   const prefix =
     signed && amount !== 0 ? (amount > 0 ? "+" : "−") : "";
   return (
-    <span
-      data-money
-      className={cn(
-        "font-sans tabular-nums tracking-tight font-semibold",
-        className
-      )}
-    >
+    <span className={cn("font-mono tabular-nums tracking-tight", className)}>
       {prefix}
       {formatted}
     </span>

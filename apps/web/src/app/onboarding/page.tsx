@@ -109,11 +109,7 @@ export default function OnboardingPage() {
           >
             <span
               className="tag"
-              style={{
-                color: "var(--bucket-spend)",
-                background:
-                  "color-mix(in oklch, var(--bucket-spend) 12%, transparent)",
-              }}
+              style={{ color: "var(--y)", background: "#f5c84218" }}
             >
               Optional skip
             </span>

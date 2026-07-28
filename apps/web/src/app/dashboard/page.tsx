@@ -69,7 +69,7 @@ export default async function DashboardPage() {
   start.setHours(0, 0, 0, 0);
   const monthRows = allTxs.filter((t) => t.date >= start);
 
-  // No sample / demo balances on first load (zeros until real income is logged)
+  // No sample / demo balances when income is zero
   const sampleWaterfall = null;
 
   const now = new Date();
