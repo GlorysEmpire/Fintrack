@@ -54,9 +54,13 @@ ${userContextBlock}
 `;
 }
 
+/** Shown at the end of offline coach replies — user-facing, never mentions API keys */
+const OFFLINE_FOOTER =
+  "\n\n— FinTrack Steward (guided mode). Full online Steward coming soon.";
+
 /**
  * Offline / no-API-key fallback: rule-based "advisor" so the product still works.
- * Not as smart as the model — honest about that.
+ * Not as smart as the model — honest about that without developer jargon.
  */
 export function offlineAdvisorReply(
   question: string,
@@ -73,19 +77,19 @@ export function offlineAdvisorReply(
   const base = `Plan: ${ctx.planName || "not set yet"}. Income this month: ${ctx.income.toFixed(0)}. Expenses: ${ctx.expenses.toFixed(0)}. Net: ${ctx.net.toFixed(0)}.`;
 
   if (q.includes("tithe") || q.includes("give")) {
-    return `${base}\n\nStewardship starts with what you already committed. Log tithe/give payments from those buckets so "allocated" becomes "done." If faith giving matters to you, protect it before lifestyle expands.\n\nNext: log any outstanding tithe/give as expenses from the right bucket.\n\n(Offline coach — add XAI_API_KEY for full Steward.)`;
+    return `${base}\n\nStewardship starts with what you already committed. Log tithe/give payments from those buckets so "allocated" becomes "done." If faith giving matters to you, protect it before lifestyle expands.\n\nNext: log any outstanding tithe/give as expenses from the right bucket.${OFFLINE_FOOTER}`;
   }
   if (q.includes("invest") || q.includes("grow")) {
-    return `${base}\n\nRisk before return: fill emergency and clear high-interest pressure before aggressive bets. Use your Invest bucket as a process (regular deposits), not tips.\n\nBuckets:\n${ctx.bucketLines.join("\n") || "—"}\n\nNext: set one automatic transfer amount into Invest this month.\n\n(Offline coach — add XAI_API_KEY for full Steward.)`;
+    return `${base}\n\nRisk before return: fill emergency and clear high-interest pressure before aggressive bets. Use your Invest bucket as a process (regular deposits), not tips.\n\nBuckets:\n${ctx.bucketLines.join("\n") || "—"}\n\nNext: set one automatic transfer amount into Invest this month.${OFFLINE_FOOTER}`;
   }
   if (q.includes("track") || q.includes("summary") || q.includes("on track")) {
     const tone =
       ctx.net >= 0
         ? "You still have margin — protect it."
         : "Expenses exceed logged income — pause new lifestyle spend until income is logged or plan is adjusted.";
-    return `${base}\n\n${tone} Overrides this month: ${ctx.overrideCount}. Review each override reason; patterns beat one-offs.\n\n${ctx.bucketLines.join("\n") || "No buckets yet."}\n\nNext: open Overview and fix the reddest bucket first.\n\n(Offline coach — add XAI_API_KEY for full Steward.)`;
+    return `${base}\n\n${tone} Overrides this month: ${ctx.overrideCount}. Review each override reason; patterns beat one-offs.\n\n${ctx.bucketLines.join("\n") || "No buckets yet."}\n\nNext: open Overview and fix the reddest bucket first.${OFFLINE_FOOTER}`;
   }
-  return `${base}\n\nI coach from your plan and numbers only. Ask about being on track, tithe, invest targets, or a full monthly summary.\n\n${ctx.bucketLines.slice(0, 6).join("\n")}\n\n(Offline coach — set XAI_API_KEY on the server for the full FinTrack Steward.)`;
+  return `${base}\n\nI coach from your plan and numbers only. Ask about being on track, tithe, invest targets, or a full monthly summary.\n\n${ctx.bucketLines.slice(0, 6).join("\n")}${OFFLINE_FOOTER}`;
 }
 
 /** Short inbox message after an intentional overspend override */

@@ -110,7 +110,7 @@ export async function askSteward(opts: {
     return {
       reply:
         offlineAdvisorReply(opts.userMessage, opts.offlineCtx) +
-        "\n\n(Live AI unavailable — used offline coach.)",
+        "\n\n(Guided mode for now — full online Steward coming soon.)",
       mode: "offline",
     };
   }
