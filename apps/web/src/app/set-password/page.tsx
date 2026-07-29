@@ -86,7 +86,7 @@ export default function SetPasswordPage() {
 
   return (
     <AuroraBackground>
-      <div className="container relative z-10 mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
+      <div className="container relative z-10 mx-auto flex min-h-full max-w-md flex-col justify-center px-6 py-12 pb-28">
         <div className="logo mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-primary">
           <span className="logo-dot h-2 w-2 rounded-full bg-primary shadow-[0_0_20px_var(--color-primary)]" />
           FinTrack security

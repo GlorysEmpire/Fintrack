@@ -96,12 +96,16 @@
   * { box-sizing: border-box; margin: 0; padding: 0; border-color: var(--color-border); }
   html, body {
     height: 100%;
+    min-height: 100dvh;
     background: var(--color-background);
     color: var(--color-foreground);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
       Helvetica, Arial, sans-serif;
     font-size: 14px;
-    overflow: hidden;
+    /* Allow vertical scroll on auth/onboarding; prevent horizontal rubber-band */
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .font-mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
@@ -341,16 +345,18 @@ select.minp { cursor: pointer; font-size: 13px; }
 .app-shell {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
   background: var(--bg);
 }
-/* Content area = legacy .page.on */
+/* Content area = legacy .page.on — only scrollport for logged-in app */
 .shell-main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   padding: 24px;
   padding-bottom: 80px;

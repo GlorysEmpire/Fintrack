@@ -192,7 +192,7 @@ export default function OnboardingPage() {
 
   return (
     <AuroraBackground>
-      <div className="container relative z-10 mx-auto max-w-lg px-6 pt-12 pb-28">
+      <div className="container relative z-10 mx-auto max-w-lg px-6 pt-12 pb-32">
         <div className="logo">
           <span className="logo-dot" /> FinTrack setup
         </div>

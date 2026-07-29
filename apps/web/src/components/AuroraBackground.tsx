@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Deep green → indigo → violet mesh for auth / onboarding.
+ * Full-viewport scrollport (h-dvh + overflow-y-auto) so long mobile
+ * onboarding can finger-scroll even when the document is constrained.
  * Respects prefers-reduced-motion (static blobs only).
  */
 export function AuroraBackground({
@@ -16,10 +18,11 @@ export function AuroraBackground({
   return (
     <div
       className={cn(
-        // Never overflow-hidden on full-screen shells — clips tall onboarding on mobile
-        "relative min-h-screen overflow-x-hidden overflow-y-auto bg-[oklch(0.12_0.02_160)] text-foreground",
+        // Fixed viewport height → this element IS the scroll container
+        "relative h-dvh max-h-dvh w-full overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[oklch(0.12_0.02_160)] text-foreground",
         className
       )}
+      style={{ WebkitOverflowScrolling: "touch" }}
     >
       <div
         aria-hidden
@@ -27,13 +30,14 @@ export function AuroraBackground({
       />
       <div
         aria-hidden
-        className="aurora-blob aurora-blob-a absolute -left-24 top-10 h-72 w-72 rounded-full bg-[oklch(0.45_0.16_160/0.35)] blur-3xl will-change-transform"
+        className="aurora-blob aurora-blob-a pointer-events-none absolute -left-24 top-10 h-72 w-72 rounded-full bg-[oklch(0.45_0.16_160/0.35)] blur-3xl will-change-transform"
       />
       <div
         aria-hidden
-        className="aurora-blob aurora-blob-b absolute -right-16 bottom-8 h-80 w-80 rounded-full bg-[oklch(0.4_0.16_290/0.3)] blur-3xl will-change-transform"
+        className="aurora-blob aurora-blob-b pointer-events-none absolute -right-16 top-[40%] h-80 w-80 rounded-full bg-[oklch(0.4_0.16_290/0.3)] blur-3xl will-change-transform"
       />
-      <div className="relative z-10 min-h-screen">{children}</div>
+      {/* Content grows taller than dvh → outer overflow-y-auto scrolls */}
+      <div className="relative z-10 w-full min-h-full">{children}</div>
     </div>
   );
 }
