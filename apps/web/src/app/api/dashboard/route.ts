@@ -13,12 +13,25 @@ import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getUserPlan } from "@/lib/plan";
 import { parseFx, parseOpeningBalances } from "@/lib/money";
+import { ensureMonthPacked } from "@/lib/month-close";
 
 export async function GET() {
+  console.log("DASHBOARD API ROUTE HIT");
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
+  // Human: pack last month if needed, then read openings
+  console.log("PACKING GUARD STARTED", {
+    userId: user.id,
+  });
+
+  const packingResult = await ensureMonthPacked(user.id);
+  console.log("DASHBOARD: packing result", packingResult);
+
+  console.log("PACKING GUARD COMPLETED", {
+  userId: user.id,
+  });
 
   const plan = await getUserPlan(user.id);
   const planRow = await prisma.budgetPlan.findUnique({

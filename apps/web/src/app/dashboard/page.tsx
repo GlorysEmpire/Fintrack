@@ -15,11 +15,16 @@ import { getUserPlan } from "@/lib/plan";
 import { parseFx, parseOpeningBalances } from "@/lib/money";
 import { getUserDashboardLayout } from "@/lib/dashboard-layout";
 import { DashboardClient } from "@/components/DashboardClient";
+import { ensureMonthPacked } from "@/lib/month-close";
 
 export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
+
+  const packingResult = await ensureMonthPacked(user.id);
+
+  console.log("DASHBOARD: packing result", packingResult);
 
   const plan = await getUserPlan(user.id);
   const planRow = await prisma.budgetPlan.findUnique({

@@ -153,6 +153,8 @@ model BudgetPlan {
   bucketsJson               String
   /// JSON map bucketId → opening balance from carry-over months
   openingBalancesJson       String   @default("{}")
+  /// YYYY-MM of the last month we packed (opening balances written). Null = never packed.
+  lastMonthClosed String?
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
