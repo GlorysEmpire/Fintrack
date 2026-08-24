@@ -72,6 +72,7 @@ type Props = {
   };
   sampleWaterfall: WaterfallResult | null;
   transactions: Tx[];
+  historyTransactions?: Tx[];
   inboxUnread: number;
   daysLeft: number;
   layout: DashboardLayout;
@@ -101,6 +102,7 @@ export function DashboardClient(props: Props) {
     snapshot,
     sampleWaterfall,
     transactions,
+    historyTransactions = [],
     inboxUnread,
     daysLeft,
     layout,
@@ -593,6 +595,43 @@ export function DashboardClient(props: Props) {
     );
   }
 
+    function HistoryTx() {
+    if (historyTransactions.length === 0) return null;
+    const rows = historyTransactions.slice(0, 20);
+    return (
+      <>
+        <div className="sec">History (past months)</div>
+        <div className="card">
+          <p style={{ fontSize: 12, color: "var(--tx3)", marginBottom: 10 }}>
+            These logs are kept. Overview above is this month only.
+          </p>
+          {rows.map((t) => (
+            <div className="tx-item" key={t.id}>
+              <div>
+                <div className="tx-name">
+                  {t.type === "i"
+                    ? sourceLabel(t.sourceId)
+                    : bucketLabel(t.bucketId)}
+                  {t.note ? (
+                    <span className="tx-note"> · {t.note}</span>
+                  ) : null}
+                </div>
+                <div className="tx-meta">{formatTxDate(t.date)}</div>
+              </div>
+              <div className={t.type === "i" ? "amt-pos" : "amt-neg"}>
+                <Money
+                  amount={t.type === "i" ? t.amount : -t.amount}
+                  currency={t.currency}
+                  signed
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
   function renderSection(id: DashboardSectionId) {
     switch (id) {
       case "plan_status":
@@ -614,7 +653,7 @@ export function DashboardClient(props: Props) {
       case "bucket_detail":
         return <div key={id}>{BucketDetail()}</div>;
       case "recent_transactions":
-        return <div key={id}>{RecentTx()}</div>;
+        return <div key={id}>{RecentTx()} {HistoryTx()}</div>;
       default:
         return null;
     }

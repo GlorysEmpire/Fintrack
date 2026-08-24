@@ -135,6 +135,21 @@ export default async function DashboardPage() {
         override: t.override,
         date: t.date.toISOString(),
       }))}
+      historyTransactions={allTxs
+        .filter((t) => t.date < start)
+        .map((t) => ({
+          id: t.id,
+          type: t.type,
+          amount: t.amount,
+          currency: t.currency,
+          bucketId: t.bucketId,
+          sourceId: t.sourceId,
+          category: t.category,
+          note: t.note,
+          reason: t.reason,
+          override: t.override,
+          date: t.date.toISOString(),
+        }))}
       inboxUnread={inboxUnread}
       daysLeft={daysLeft}
       layout={layout}

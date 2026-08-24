@@ -15,3 +15,4 @@ apps/web/prisma/*.db
 apps/web/prisma/*.db-journal
 .vercel
 *.tsbuildinfo
+.aider*
