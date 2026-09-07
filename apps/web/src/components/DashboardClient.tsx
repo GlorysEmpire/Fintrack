@@ -70,6 +70,12 @@ type Props = {
     waterfall: WaterfallResult | null;
     buckets: MonthBucketState[];
   };
+  /** All-time totals across the user's full transaction history (base currency) */
+  totals: {
+    income: number;
+    expenses: number;
+    net: number;
+  };
   sampleWaterfall: WaterfallResult | null;
   transactions: Tx[];
   historyTransactions?: Tx[];
@@ -100,6 +106,7 @@ export function DashboardClient(props: Props) {
     fx,
     sources,
     snapshot,
+    totals,
     sampleWaterfall,
     transactions,
     historyTransactions = [],
@@ -112,12 +119,17 @@ export function DashboardClient(props: Props) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  /** Summary scope — TOTAL (all history) is the default so returning users
+   *  never see their data look wiped on a new month. THIS MONTH shows only the
+   *  current calendar month (the previous default behavior). */
+  const [scope, setScope] = useState<"total" | "month">("total");
   const base = baseCurrency as CurrencyCode;
 
+  const view = scope === "total" ? totals : snapshot;
   const actual = snapshot.income;
-  const incomeAnim = useCountUp(actual);
-  const expenseAnim = useCountUp(snapshot.expenses);
-  const netAnim = useCountUp(Math.abs(snapshot.net));
+  const incomeAnim = useCountUp(view.income);
+  const expenseAnim = useCountUp(view.expenses);
+  const netAnim = useCountUp(Math.abs(view.net));
   // Only real waterfall from logged income (no sample 100k demo)
   const chartWaterfall =
     snapshot.waterfall && actual > 0 ? snapshot.waterfall : null;
@@ -188,40 +200,80 @@ export function DashboardClient(props: Props) {
 
   /** Overview metrics with odometer count-up */
   function Metrics() {
+    const isTotal = scope === "total";
     return (
-      <div className="m-grid">
-        <div className="metric">
-          <div className="m-lbl">Income logged</div>
-          <div className="m-val">
-            <Money amount={incomeAnim} currency={base} />
-          </div>
-          <div className="m-sub">actual this month</div>
-        </div>
-        <div className="metric">
-          <div className="m-lbl">Total expenses</div>
-          <div className="m-val" style={{ color: "var(--r)" }}>
-            <Money amount={expenseAnim} currency={base} />
-          </div>
-          <div className="m-sub">all buckets combined</div>
-        </div>
-        <div className="metric">
-          <div className="m-lbl">Net remaining</div>
-          <div
-            className="m-val"
-            style={{ color: snapshot.net >= 0 ? "var(--g)" : "var(--r)" }}
+      <>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginBottom: 12,
+          }}
+        >
+          <button
+            type="button"
+            className={`nav-btn${isTotal ? " on" : ""}`}
+            aria-pressed={isTotal}
+            onClick={() => setScope("total")}
           >
-            <Money amount={netAnim} currency={base} />
+            TOTAL
+          </button>
+          <button
+            type="button"
+            className={`nav-btn${!isTotal ? " on" : ""}`}
+            aria-pressed={!isTotal}
+            onClick={() => setScope("month")}
+          >
+            THIS MONTH
+          </button>
+        </div>
+        <div className="m-grid">
+          <div className="metric">
+            <div className="m-lbl">Income logged</div>
+            <div className="m-val">
+              <Money amount={incomeAnim} currency={base} />
+            </div>
+            <div className="m-sub">
+              {isTotal ? "all time" : "actual this month"}
+            </div>
           </div>
-          <div className="m-sub">
-            {snapshot.net >= 0 ? "available" : "over budget"}
+          <div className="metric">
+            <div className="m-lbl">Total expenses</div>
+            <div className="m-val" style={{ color: "var(--r)" }}>
+              <Money amount={expenseAnim} currency={base} />
+            </div>
+            <div className="m-sub">
+              {isTotal ? "all time" : "all buckets combined"}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="m-lbl">
+              {isTotal ? "Net" : "Net remaining"}
+            </div>
+            <div
+              className="m-val"
+              style={{ color: view.net >= 0 ? "var(--g)" : "var(--r)" }}
+            >
+              <Money amount={netAnim} currency={base} />
+            </div>
+            <div className="m-sub">
+              {isTotal
+                ? view.net >= 0
+                  ? "cumulative savings"
+                  : "cumulative deficit"
+                : view.net >= 0
+                  ? "available"
+                  : "over budget"}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="m-lbl">Days left</div>
+            <div className="m-val font-mono tabular-nums">{daysLeft}</div>
+            <div className="m-sub">in this month</div>
           </div>
         </div>
-        <div className="metric">
-          <div className="m-lbl">Days left</div>
-          <div className="m-val font-mono tabular-nums">{daysLeft}</div>
-          <div className="m-sub">in this month</div>
-        </div>
-      </div>
+      </>
     );
   }
 

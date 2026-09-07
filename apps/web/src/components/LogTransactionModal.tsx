@@ -6,6 +6,7 @@
  * Hard-blocks when amount exceeds bucket remaining.
  */
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -192,7 +193,10 @@ export function LogTransactionModal({
 
   const desc = BUCKET_DESCRIPTIONS[bucketId] || "";
 
-  return (
+  // Render at <body> level so the overlay is above the entire app shell
+  // (topbar + nav + scrollport) and free of any ancestor layout/stacking
+  // interference on mobile.
+  return createPortal(
     <div
       className="ov on"
       role="dialog"
@@ -505,6 +509,7 @@ export function LogTransactionModal({
           Cancel
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

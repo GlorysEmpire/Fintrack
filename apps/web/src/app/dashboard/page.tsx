@@ -6,6 +6,7 @@ import {
   filterMonthTxs,
   forecast,
   monthSnapshot,
+  transactionTotals,
   type MoneyTx,
 } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
@@ -43,7 +44,6 @@ export default async function DashboardPage() {
     prisma.transaction.findMany({
       where: { userId: user.id },
       orderBy: { date: "desc" },
-      take: 100,
     }),
     unreadCount(user.id),
     getUserDashboardLayout(user.id),
@@ -62,6 +62,9 @@ export default async function DashboardPage() {
   }));
   const monthTxs = filterMonthTxs(moneyTxs);
   const snap = monthSnapshot(plan, monthTxs, user.baseCurrency, fx, opening);
+  // Actual financial reality across ALL history (income − expenses), not a
+  // projection and not tied to the waterfall / month plan.
+  const totals = transactionTotals(moneyTxs, user.baseCurrency, fx);
 
   const start = new Date();
   start.setDate(1);
@@ -121,6 +124,7 @@ export default async function DashboardPage() {
         waterfall: snap.waterfall,
         buckets: snap.buckets,
       }}
+      totals={totals}
       sampleWaterfall={sampleWaterfall}
       transactions={monthRows.map((t) => ({
         id: t.id,

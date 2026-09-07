@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
-type Mode = "password" | "otp" | "forgot";
+type Mode = "password" | "otp" | "forgot" | "signup";
 type OtpStep = "email" | "code";
 type ForgotStep = "email" | "reset";
 
@@ -48,6 +48,11 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Create account (signup)
+  const [signupStep, setSignupStep] = useState<OtpStep>("email");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupConfirm, setSignupConfirm] = useState("");
+
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
@@ -59,6 +64,9 @@ export default function LoginPage() {
     setConfirmPassword("");
     setOtpStep("email");
     setForgotStep("email");
+    setSignupStep("email");
+    setSignupPassword("");
+    setSignupConfirm("");
   }
 
   async function loginPassword(e: React.FormEvent) {
@@ -96,6 +104,8 @@ export default function LoginPage() {
       setDevCode(data.devCode || null);
       if (mode === "forgot") {
         setForgotStep("reset");
+      } else if (mode === "signup") {
+        setSignupStep("code");
       } else {
         setOtpStep("code");
       }
@@ -115,6 +125,36 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed");
+      routeAfterAuth(data.user.onboarding, router);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createAccount(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (signupPassword !== signupConfirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          code,
+          password: signupPassword,
+          confirmPassword: signupConfirm,
+          intent: "signup",
+        }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed");
@@ -166,9 +206,15 @@ export default function LoginPage() {
           FinTrack
         </div>
         <h1 className="text-3xl font-bold leading-tight tracking-tight">
-          Your money.
-          <br />
-          Your rules.
+          {mode === "signup" ? (
+            <>Create your FinTrack account</>
+          ) : (
+            <>
+              Your money.
+              <br />
+              Your rules.
+            </>
+          )}
         </h1>
         <p className="sub mt-3 text-sm leading-relaxed text-muted-foreground">
           {mode === "password" &&
@@ -177,9 +223,35 @@ export default function LoginPage() {
             "We’ll send a one-time code to your email — no password needed."}
           {mode === "forgot" &&
             "Verify your email with a code, then choose a new password."}
+          {mode === "signup" &&
+            "We’ll email a one-time code to verify your address, then you set your password."}
         </p>
 
         <div className="glass-card mt-8 rounded-2xl p-5">
+          <div className="mb-5 grid grid-cols-2 gap-1 rounded-xl bg-muted/60 p-1">
+            <button
+              type="button"
+              onClick={() => switchMode("password")}
+              className={
+                mode === "signup"
+                  ? "rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground transition"
+                  : "rounded-lg bg-background px-3 py-2 text-sm font-semibold shadow-sm transition"
+              }
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode("signup")}
+              className={
+                mode === "signup"
+                  ? "rounded-lg bg-background px-3 py-2 text-sm font-semibold shadow-sm transition"
+                  : "rounded-lg px-3 py-2 text-sm font-semibold text-muted-foreground transition"
+              }
+            >
+              Create account
+            </button>
+          </div>
           {mode === "password" && (
             <form onSubmit={loginPassword} className="space-y-4">
               <div>
@@ -414,6 +486,123 @@ export default function LoginPage() {
               </div>
               <Button className="w-full" type="submit" disabled={loading}>
                 {loading ? "Saving…" : "Save password & sign in"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => switchMode("password")}
+              >
+                ← Back to sign-in
+              </Button>
+            </form>
+          )}
+
+          {mode === "signup" && signupStep === "email" && (
+            <form onSubmit={requestCode} className="space-y-4">
+              <div>
+                <Label htmlFor="signup-email">Email</Label>
+                <Input
+                  id="signup-email"
+                  className="mt-2"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <Button className="w-full" type="submit" disabled={loading}>
+                {loading ? "Sending…" : "Send verification code"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => switchMode("password")}
+              >
+                ← Back to sign-in
+              </Button>
+            </form>
+          )}
+
+          {mode === "signup" && signupStep === "code" && (
+            <form onSubmit={createAccount} className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Code sent to{" "}
+                <strong className="text-foreground">{email}</strong>. Verify it
+                and choose your password.
+              </p>
+              {devCode && (
+                <div className="dev-code rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm">
+                  Dev mode — your code:
+                  <strong className="ml-2 font-mono text-primary">
+                    {devCode}
+                  </strong>
+                </div>
+              )}
+              <div>
+                <Label htmlFor="signup-code">6-digit code</Label>
+                <Input
+                  id="signup-code"
+                  className="mt-2 font-mono tracking-widest"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  required
+                  placeholder="123456"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <Label htmlFor="signup-password">Password</Label>
+                <Input
+                  id="signup-password"
+                  className="mt-2"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  placeholder="At least 8 characters"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Min 8 characters. A number or symbol is recommended.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="signup-confirm">Confirm password</Label>
+                <Input
+                  id="signup-confirm"
+                  className="mt-2"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  placeholder="Repeat password"
+                  value={signupConfirm}
+                  onChange={(e) => setSignupConfirm(e.target.value)}
+                />
+              </div>
+              <Button className="w-full" type="submit" disabled={loading}>
+                {loading ? "Creating account…" : "Create account"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  setSignupStep("email");
+                  setCode("");
+                  setDevCode(null);
+                }}
+              >
+                Use a different email
               </Button>
               <Button
                 type="button"

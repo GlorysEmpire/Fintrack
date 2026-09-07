@@ -283,9 +283,38 @@ select.inp { cursor: pointer; }
 .fab:active { transform: scale(.93); }
 
 /* ─── MODAL ──────────────────────────────────────────────────────── */
-.ov { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(6px); }
+/* Portaled to <body>; overlay must cover the whole app shell on every viewport. */
+.ov {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  /* Keep the modal clear of mobile browser chrome + notched safe areas */
+  padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+           calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+}
 .ov.on { display: flex; }
-.modal { background: color-mix(in oklch, var(--color-card) 60%, transparent); backdrop-filter: blur(20px); border: 1px solid color-mix(in oklch, white 6%, transparent); border-radius: 14px; padding: 24px; width: 100%; max-width: 420px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-glass); }
+.modal {
+  background: color-mix(in oklch, var(--color-card) 60%, transparent);
+  backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in oklch, white 6%, transparent);
+  border-radius: 14px;
+  padding: 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 420px;
+  /* dvh keeps the sheet inside the visible viewport on mobile; 90vh is the fallback */
+  max-height: 90vh;
+  max-height: min(90dvh, calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  box-shadow: var(--shadow-glass);
+}
 .modal h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
 .m-type-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
 .mtbtn { padding: 10px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--bd); background: var(--bg3); color: var(--tx2); font-family: inherit; transition: all .15s; }
@@ -503,7 +532,6 @@ a.nav-btn {
 .tx-del:hover { color: var(--r); }
 a { color: var(--g); text-decoration: none; }
 button, input, select, textarea { font: inherit; color: inherit; }
-.ov.on { display: flex; }
 
 
 /* ─── ERROR / LOADING BOUNDARIES ─────────────────────────────────── */

@@ -87,6 +87,21 @@ export function spentByBucket(
 }
 
 /**
+ * Totals across any set of transactions (usually the user's full history).
+ * Pure "what actually happened": no waterfall, no plan allocations, no
+ * projections — only logged income minus logged expenses, converted to base.
+ */
+export function transactionTotals(
+  txs: MoneyTx[],
+  base: string,
+  fx: Record<string, number>
+): { income: number; expenses: number; net: number } {
+  const income = sumIncome(txs, base, fx);
+  const expenses = sumExpenses(txs, base, fx);
+  return { income, expenses, net: income - expenses };
+}
+
+/**
  * Full month picture: waterfall from actual income + opening carry-over + spent.
  */
 export function monthSnapshot(

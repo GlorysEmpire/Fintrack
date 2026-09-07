@@ -19,6 +19,7 @@ import {
   setSessionCookie,
   setUserPassword,
   toPublicUser,
+  userHasPassword,
 } from "@/lib/auth";
 import { validatePasswordStrength } from "@/lib/password";
 import {
@@ -34,6 +35,7 @@ const bodySchema = z.object({
   code: z.string().min(4).max(8),
   password: z.string().min(1).max(128),
   confirmPassword: z.string().min(1).max(128),
+  intent: z.enum(["signup"]).optional(),
 });
 
 const INVALID_OTP = "Invalid or expired code. Request a new one.";
@@ -102,6 +104,18 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { ok: false, error: INVALID_OTP },
         { status: 400 }
+      );
+    }
+
+    // Signup intent: OTP proves email ownership; never silently reset an
+    // existing account's password through the create-account path.
+    if (body.intent === "signup" && (await userHasPassword(emailRaw))) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "An account already exists for this email. Sign in instead.",
+        },
+        { status: 409 }
       );
     }
 

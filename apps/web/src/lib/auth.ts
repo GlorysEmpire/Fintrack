@@ -149,6 +149,18 @@ export async function verifyOtp(email: string, code: string) {
 }
 
 /**
+ * True when the email already has a password set (i.e. is a real account).
+ * Used by signup to avoid silently resetting an existing account's password.
+ */
+export async function userHasPassword(email: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { email: email.trim().toLowerCase() },
+    select: { passwordHash: true },
+  });
+  return Boolean(user?.passwordHash);
+}
+
+/**
  * Email + password login. Generic failure message for unknown user / bad password.
  */
 export async function loginWithPassword(email: string, password: string) {
