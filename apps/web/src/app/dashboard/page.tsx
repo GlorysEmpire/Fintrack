@@ -3,6 +3,7 @@
  */
 import { redirect } from "next/navigation";
 import {
+  allTimeBucketStates,
   filterMonthTxs,
   forecast,
   monthSnapshot,
@@ -65,6 +66,15 @@ export default async function DashboardPage() {
   // Actual financial reality across ALL history (income − expenses), not a
   // projection and not tied to the waterfall / month plan.
   const totals = transactionTotals(moneyTxs, user.baseCurrency, fx);
+  // All-time per-bucket numbers, replayed through the same month-packing chain
+  // (monthBucketStates -> nextOpeningBalances) so history matches how the app
+  // itself packs months — never guessed from the current month only.
+  const allTimeBuckets = allTimeBucketStates(
+    moneyTxs,
+    plan,
+    user.baseCurrency,
+    fx
+  );
 
   const start = new Date();
   start.setDate(1);
@@ -125,6 +135,7 @@ export default async function DashboardPage() {
         buckets: snap.buckets,
       }}
       totals={totals}
+      allTimeBuckets={allTimeBuckets}
       sampleWaterfall={sampleWaterfall}
       transactions={monthRows.map((t) => ({
         id: t.id,

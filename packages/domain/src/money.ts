@@ -6,7 +6,11 @@ import type { BudgetPlan } from "./types";
 import type { CurrencyCode } from "./fx";
 import { toBase } from "./fx";
 import { allocateWaterfall } from "./waterfall";
-import { monthBucketStates, type MonthBucketState } from "./carryover";
+import {
+  monthBucketStates,
+  nextOpeningBalances,
+  type MonthBucketState,
+} from "./carryover";
 
 /** Minimal transaction shape from the DB layer */
 export interface MoneyTx {
@@ -99,6 +103,87 @@ export function transactionTotals(
   const income = sumIncome(txs, base, fx);
   const expenses = sumExpenses(txs, base, fx);
   return { income, expenses, net: income - expenses };
+}
+
+/**
+ * Final per-bucket state after replaying the entire transaction history.
+ *
+ * The DB stores no per-month bucket snapshots: month packing keeps only the
+ * CURRENT accumulated carry-over (BudgetPlan.openingBalancesJson) plus the last
+ * packed month key. So the authoritative way to reconstruct historical bucket
+ * state is to replay every calendar month that has transactions through the SAME
+ * chain the packer uses (monthBucketStates -> nextOpeningBalances), carrying
+ * positive closings forward exactly as ensureMonthPacked does.
+ *
+ * TOTAL scope = the final reconstructed MonthBucketState for each bucket after
+ * the latest historical month:
+ *   opening  = opening balance used in the latest month the bucket was active
+ *   allocated = latest month's waterfall allocation
+ *   spent     = latest month's spending in that bucket
+ *   closing   = opening + allocated - spent (final balance after latest month)
+ *   carryOver = whether the bucket carries over by plan rule
+ *
+ * This is the functional counterpart to THIS MONTH's snapshot.buckets, which
+ * is the current month's MonthBucketState. The dashboard UI renders both with
+ * the same formula: alloc = opening + allocated, available = closing.
+ *
+ * For carry-over buckets, the latest month already received the right opening
+ * because nextOpeningBalances feeds the following month's opening. So the final
+ * state already includes the full carry-over chain for all but the absolute
+ * latest month, and the absolute latest month opens from that chain.
+ *
+ * For monthly-reset buckets, opening is always 0 in every month, so the final
+ * state is simply the latest month's allocation - spending (the reset is by
+ * design; TOTAL does not resurrect old allocation that the plan resets).
+ *
+ * Note: plan rules are not versioned per month, so reconstruction uses the
+ * current plan for every month — the packer itself reads the current plan on
+ * each run, so this matches how the app already packs.
+ */
+export function allTimeBucketStates(
+  txs: MoneyTx[],
+  plan: BudgetPlan | null,
+  base: string,
+  fx: Record<string, number>,
+  initialOpenings: Record<string, number> = {}
+): MonthBucketState[] {
+  if (!plan) return [];
+
+  // Group by calendar month (local time), ascending.
+  const byMonth = new Map<string, MoneyTx[]>();
+  for (const t of txs) {
+    const d = typeof t.date === "string" ? new Date(t.date) : t.date;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const list = byMonth.get(key) ?? [];
+    list.push(t);
+    byMonth.set(key, list);
+  }
+  const monthKeys = [...byMonth.keys()].sort();
+
+  if (monthKeys.length === 0) {
+    // No history yet -> final state is empty for every bucket (matching THIS
+    // MONTH semantics for a user with no current-month activity).
+    return plan.buckets.map((b) => ({
+      bucketId: b.id,
+      opening: 0,
+      allocated: 0,
+      spent: 0,
+      closing: 0,
+      carryOver: b.carryOver,
+    }));
+  }
+
+  let opening = { ...initialOpenings };
+  let latestStates: MonthBucketState[] = [];
+  for (const key of monthKeys) {
+    const monthTxs = byMonth.get(key)!;
+    const income = sumIncome(monthTxs, base, fx);
+    const spent = spentByBucket(monthTxs, base, fx);
+    latestStates = monthBucketStates(income, plan, spent, opening);
+    opening = nextOpeningBalances(latestStates);
+  }
+
+  return latestStates;
 }
 
 /**

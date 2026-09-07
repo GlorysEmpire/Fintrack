@@ -76,6 +76,8 @@ type Props = {
     expenses: number;
     net: number;
   };
+  /** All-time per-bucket numbers replayed through the month-packing chain */
+  allTimeBuckets: MonthBucketState[];
   sampleWaterfall: WaterfallResult | null;
   transactions: Tx[];
   historyTransactions?: Tx[];
@@ -107,6 +109,7 @@ export function DashboardClient(props: Props) {
     sources,
     snapshot,
     totals,
+    allTimeBuckets,
     sampleWaterfall,
     transactions,
     historyTransactions = [],
@@ -126,6 +129,8 @@ export function DashboardClient(props: Props) {
   const base = baseCurrency as CurrencyCode;
 
   const view = scope === "total" ? totals : snapshot;
+  /** Bucket rows follow the same scope: all-time replay or current month */
+  const bucketStates = scope === "total" ? allTimeBuckets : snapshot.buckets;
   const actual = snapshot.income;
   const incomeAnim = useCountUp(view.income);
   const expenseAnim = useCountUp(view.expenses);
@@ -202,51 +207,7 @@ export function DashboardClient(props: Props) {
   function Metrics() {
     const isTotal = scope === "total";
     return (
-      <>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            marginBottom: 12,
-          }}
-        >
-          <button
-            type="button"
-            className={`nav-btn${isTotal ? " on" : ""}`}
-            aria-pressed={isTotal}
-            onClick={() => setScope("total")}
-          >
-            TOTAL
-          </button>
-          <button
-            type="button"
-            className={`nav-btn${!isTotal ? " on" : ""}`}
-            aria-pressed={!isTotal}
-            onClick={() => setScope("month")}
-          >
-            THIS MONTH
-          </button>
-        </div>
-        <div className="m-grid">
-          <div className="metric">
-            <div className="m-lbl">Income logged</div>
-            <div className="m-val">
-              <Money amount={incomeAnim} currency={base} />
-            </div>
-            <div className="m-sub">
-              {isTotal ? "all time" : "actual this month"}
-            </div>
-          </div>
-          <div className="metric">
-            <div className="m-lbl">Total expenses</div>
-            <div className="m-val" style={{ color: "var(--r)" }}>
-              <Money amount={expenseAnim} currency={base} />
-            </div>
-            <div className="m-sub">
-              {isTotal ? "all time" : "all buckets combined"}
-            </div>
-          </div>
+      <div className="m-grid">
           <div className="metric">
             <div className="m-lbl">
               {isTotal ? "Net" : "Net remaining"}
@@ -268,12 +229,29 @@ export function DashboardClient(props: Props) {
             </div>
           </div>
           <div className="metric">
+            <div className="m-lbl">Total expenses</div>
+            <div className="m-val" style={{ color: "var(--r)" }}>
+              <Money amount={expenseAnim} currency={base} />
+            </div>
+            <div className="m-sub">
+              {isTotal ? "all time" : "all buckets combined"}
+            </div>
+          </div>
+          <div className="metric">
+            <div className="m-lbl">Income logged</div>
+            <div className="m-val">
+              <Money amount={incomeAnim} currency={base} />
+            </div>
+            <div className="m-sub">
+              {isTotal ? "all time" : "actual this month"}
+            </div>
+          </div>
+          <div className="metric">
             <div className="m-lbl">Days left</div>
             <div className="m-val font-mono tabular-nums">{daysLeft}</div>
             <div className="m-sub">in this month</div>
           </div>
         </div>
-      </>
     );
   }
 
@@ -344,7 +322,9 @@ export function DashboardClient(props: Props) {
           <div className="card-t">
             💧 Bucket balances{" "}
             <span style={{ fontSize: 10, fontWeight: 400, color: "var(--tx3)" }}>
-              — allocated vs remaining after expenses
+              {scope === "total"
+                ? "— all-time allocated vs spent"
+                : "— allocated vs remaining after expenses"}
             </span>
           </div>
           <p style={{ fontSize: 12, color: "var(--tx3)" }}>
@@ -355,7 +335,7 @@ export function DashboardClient(props: Props) {
     }
 
     const orderedPlan = sortBucketsByCanonicalOrder(plan.buckets);
-    const byId = new Map(snapshot.buckets.map((b) => [b.bucketId, b]));
+    const byId = new Map(bucketStates.map((b) => [b.bucketId, b]));
     const rows: {
       id: string;
       emoji: string;
@@ -397,7 +377,9 @@ export function DashboardClient(props: Props) {
         <div className="card-t">
           💧 Bucket balances{" "}
           <span style={{ fontSize: 10, fontWeight: 400, color: "var(--tx3)" }}>
-            — allocated vs remaining after expenses
+            {scope === "total"
+              ? "— all-time allocated vs spent"
+              : "— allocated vs remaining after expenses"}
           </span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 0 }}>
@@ -456,8 +438,8 @@ export function DashboardClient(props: Props) {
                     </div>
                     <div className="wf-pct">
                       of {formatMoney(r.alloc, base)} ·{" "}
-                      {actual > 0
-                        ? ((r.alloc / actual) * 100).toFixed(0)
+                      {view.income > 0
+                        ? ((r.alloc / view.income) * 100).toFixed(0)
                         : 0}
                       %
                     </div>
@@ -473,12 +455,15 @@ export function DashboardClient(props: Props) {
 
   /** Legacy renderBucketBalances cards */
   function BucketDetail() {
-    if (!plan || snapshot.buckets.length === 0) return null;
+    if (!plan || bucketStates.length === 0) return null;
     return (
       <>
-        <div className="sec">Bucket spending detail</div>
+        <div className="sec">
+          Bucket spending detail
+          {scope === "total" ? " — all time" : " — this month"}
+        </div>
         <div id="bucket-balances-card">
-          {snapshot.buckets.map((b, i) => {
+          {bucketStates.map((b, i) => {
             const meta = plan.buckets.find((x) => x.id === b.bucketId);
             const alloc = b.opening + b.allocated;
             const spent = b.spent;
@@ -502,8 +487,12 @@ export function DashboardClient(props: Props) {
                 : "var(--tx)";
             const wfc = bucketColor(b.bucketId, i);
 
-            // Expenses for this bucket from month txs
-            const spentTxs = transactions.filter(
+            // Expenses for this bucket — this month's txs, or all txs for TOTAL
+            const scopeTxs =
+              scope === "total"
+                ? [...historyTransactions, ...transactions]
+                : transactions;
+            const spentTxs = scopeTxs.filter(
               (t) => t.type === "e" && t.bucketId === b.bucketId
             );
 
@@ -722,6 +711,32 @@ export function DashboardClient(props: Props) {
       </div>
 
       <SetPasswordPrompt hasPassword={hasPassword} />
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 12,
+        }}
+      >
+        <button
+          type="button"
+          className={`nav-btn${scope === "total" ? " on" : ""}`}
+          aria-pressed={scope === "total"}
+          onClick={() => setScope("total")}
+        >
+          TOTAL
+        </button>
+        <button
+          type="button"
+          className={`nav-btn${scope === "month" ? " on" : ""}`}
+          aria-pressed={scope === "month"}
+          onClick={() => setScope("month")}
+        >
+          THIS MONTH
+        </button>
+      </div>
 
       {sections.map((id) => renderSection(id))}
       <ForecastCard />
