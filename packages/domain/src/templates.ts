@@ -45,7 +45,7 @@ export const TITHE_FIRST_TEMPLATE: PlanTemplate = {
         "mandatory",
         10,
         "of_gross",
-        false,
+        true,
         0
       ),
       bucket(
