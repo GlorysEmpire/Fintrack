@@ -39,3 +39,112 @@ describe("emergency carry-over", () => {
     assert.equal(next.tithe, undefined); // tithe does not carry by default
   });
 });
+it("allocates a fixed amount instead of the percentage", () => {
+  const result = allocateWaterfall(100_000, {
+    buckets: [
+      {
+        id: "fixed",
+        name: "Fixed",
+        emoji: "💰",
+        layer: "life_plan",
+        percent: 50,
+        fixed: 10_000,
+        mode: "of_remaining",
+        carryOver: false,
+        order: 1,
+      },
+    ],
+  });
+
+assert.equal(result.lines[0].allocated, 10_000);});
+
+describe("fixed waterfall allocation", () => {
+  it("uses the fixed amount instead of the percentage", () => {
+    const result = allocateWaterfall(100_000, {
+      buckets: [
+        {
+          id: "fixed",
+          name: "Fixed",
+          emoji: "💰",
+          layer: "life_plan",
+          percent: 50,
+          fixed: 10_000,
+          mode: "of_remaining",
+          carryOver: false,
+          order: 1,
+        },
+      ],
+    });
+
+    assert.equal(result.lines[0].allocated, 10_000);
+  });
+});
+describe("layered waterfall", () => {
+  it("allocates life plan percentages from the remaining balance", () => {
+    const result = allocateWaterfall(100_000, {
+      buckets: [
+        {
+          id: "tax",
+          name: "Tax",
+          emoji: "🧾",
+          layer: "mandatory",
+          percent: 10,
+          mode: "of_gross",
+          carryOver: false,
+          order: 0,
+        },
+        {
+          id: "tithe",
+          name: "Tithe",
+          emoji: "✝️",
+          layer: "off_the_top",
+          percent: 10,
+          mode: "of_remaining",
+          carryOver: false,
+          order: 1,
+        },
+        {
+          id: "needs",
+          name: "Needs",
+          emoji: "🏠",
+          layer: "life_plan",
+          percent: 50,
+          mode: "share_remainder",
+          carryOver: false,
+          order: 2,
+        },
+        {
+          id: "wants",
+          name: "Wants",
+          emoji: "✨",
+          layer: "life_plan",
+          percent: 20,
+          mode: "share_remainder",
+          carryOver: false,
+          order: 3,
+        },
+        {
+          id: "savings",
+          name: "Savings",
+          emoji: "💰",
+          layer: "life_plan",
+          percent: 30,
+          mode: "share_remainder",
+          carryOver: false,
+          order: 4,
+        },
+      ],
+    });
+
+    const byId = Object.fromEntries(
+      result.lines.map((line) => [line.bucketId, line.allocated])
+    );
+
+    assert.equal(byId.tax, 10_000);
+    assert.equal(byId.tithe, 9_000);
+    assert.equal(byId.needs, 40_500);
+    assert.equal(byId.wants, 16_200);
+    assert.equal(byId.savings, 24_300);
+    assert.ok(result.unallocated < 0.01);
+  });
+});

@@ -12,7 +12,8 @@
  *   leftover pot by their percent weights (e.g. 40/10/40/10)
  */
 export type AllocationMode = "of_gross" | "of_remaining" | "share_remainder";
-
+/** The layer to which a bucket belongs in the waterfall (e.g., mandatory, off_the_top, life_plan) */
+export type WaterfallLayer = "mandatory" | "off_the_top" | "life_plan";
 /** One envelope in the user's budget (Tithe, Emergency, Spend, …) */
 export interface PlanBucket {
   id: string;
@@ -20,10 +21,12 @@ export interface PlanBucket {
   emoji: string;
   /** 0–100 */
   percent: number;
+  fixed?: number;
   mode: AllocationMode;
   /** If true, unused balance rolls into next month */
   carryOver: boolean;
   order: number;
+  layer: WaterfallLayer;
 }
 
 /** A full customizable budget plan owned by one user */
