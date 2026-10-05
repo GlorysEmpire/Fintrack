@@ -15,6 +15,7 @@ import {
 } from "@fintrack/domain";
 import { formatMoney, type CurrencyCode } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
+import { ensureMonthPacked } from "@/lib/month-close";
 import { prisma } from "@/lib/db";
 import { createOverrideInboxMessage } from "@/lib/inbox";
 import { getUserPlan } from "@/lib/plan";
@@ -67,6 +68,8 @@ export async function POST(req: Request) {
 
   try {
     const body = postSchema.parse(await req.json());
+    // Human: make sure this month's carry-over is current before using it
+    await ensureMonthPacked(user.id);
     const plan = await getUserPlan(user.id);
     const fx = parseFx(user.fxRates);
     const planRow = await prisma.budgetPlan.findUnique({

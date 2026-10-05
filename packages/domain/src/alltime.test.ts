@@ -42,7 +42,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 50_000, FEB),
       tx("e", 2_000, FEB, "spend"),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, FEB);
     const byId = new Map(states.map((s) => [s.bucketId, s]));
 
     assert.equal(states.length, plan.buckets.length);
@@ -81,7 +81,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 100_000, JAN),
       tx("i", 50_000, FEB),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, FEB);
     const emergency = states.find((s) => s.bucketId === "emergency")!;
     assert.equal(emergency.opening, 9_000);
     assert.equal(emergency.allocated, 4_500);
@@ -98,7 +98,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 100_000, JAN),
       tx("i", 50_000, MAR), // February has no transactions
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, MAR);
     const emergency = states.find((s) => s.bucketId === "emergency")!;
     assert.equal(emergency.opening, 9_000);
     assert.equal(emergency.allocated, 4_500);
@@ -116,7 +116,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 50_000, FEB),
       tx("e", 2_000, FEB, "spend"),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, FEB);
     const spend = states.find((s) => s.bucketId === "spend")!;
     assert.equal(spend.carryOver, false);
     // FEB spend: opening=0, allocated=4050, spent=2000, closing=2050
@@ -147,10 +147,10 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("e", 2_400, prevMonth, "tithe"),
       // current month has no transactions
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, prevMonth);
     const tithe = states.find((s) => s.bucketId === "tithe")!;
 
-    // Latest month with transactions is January, so TOTAL = January's tithe state
+    // As of January (the month the transactions are in), TOTAL = January's tithe state
     // which should be: opening=0, allocated=3400, spent=2400, closing=1000
     assert.equal(tithe.opening, 0);
     assert.equal(tithe.allocated, 3_400);
@@ -233,10 +233,12 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       ],
       plan,
       "NGN",
-      fx
+      fx,
+      {},
+      mAR
     );
     const tithe = states.find((s) => s.bucketId === "tithe")!;
-    // Latest month with transactions is March, so TOTAL = March's tithe state
+    // As of March, TOTAL = March's tithe state
     assert.equal(tithe.opening, 1_000); // carried from February
     assert.equal(tithe.allocated, 500); // 10% of 5,000
     assert.equal(tithe.spent, 300);
@@ -265,7 +267,9 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       [tx("i", 100_000, jAN)],
       plan,
       "NGN",
-      fx
+      fx,
+      {},
+      jAN
     );
     const emergency = states.find((s) => s.bucketId === "emergency")!;
     assert.equal(emergency.opening, 0);
@@ -294,7 +298,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 50_000, fEB),
       tx("e", 2_000, fEB, "spend"),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, fEB);
     const byId = new Map(states.map((s) => [s.bucketId, s]));
 
     assert.equal(states.length, plan.buckets.length);
@@ -345,7 +349,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       { ...tx("i", 100, JAN), currency: "USD" }, // 100 × 1580 = 158,000 NGN
       { ...tx("e", 50, JAN, "spend"), currency: "USD" }, // 50 × 1580 = 79,000 NGN
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, JAN);
     const spend = states.find((s) => s.bucketId === "spend")!;
     // spend gets 10% of remainder after tithe + emergency:
     // 158,000 → 142,200 → 127,980 → 12,798 allocated; spent 79,000
