@@ -1,5 +1,5 @@
 /**
- * Rate limiting for auth endpoints.
+ * Rate limiting for auth endpoints and destructive actions.
  *
  * Production / Preview: Upstash Redis (UPSTASH_REDIS_REST_URL + TOKEN).
  * Local without Upstash: in-memory sliding windows (process-local only).
@@ -143,6 +143,14 @@ export const setPasswordEmailLimiter = makeLimiter(
   "15 m",
   15 * 60 * 1000,
   "ft:set-password:email"
+);
+
+/** 5 Reset FinTrack attempts per user per hour (a destructive action is never hammered) */
+export const resetUserLimiter = makeLimiter(
+  5,
+  "1 h",
+  60 * 60 * 1000,
+  "ft:reset:user"
 );
 
 /** Client IP from reverse-proxy headers (Vercel / similar). */

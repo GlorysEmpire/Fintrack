@@ -600,6 +600,8 @@ label.mlbl { display: block; }
 .edit-rule { font-size: 11px; color: var(--tx3); margin-top: 12px; line-height: 1.5; }
 .btn-danger { background: var(--r); color: #fff; }
 .btn-danger:hover { opacity: .9; }
+.btn-danger-outline { background: transparent; border: 1px solid var(--r); color: var(--r); }
+.btn-danger-outline:hover { background: var(--rdim); }
 .confirm-points { font-size: 13px; color: var(--tx2); line-height: 1.6; margin-top: 12px; }
 .confirm-points ul { margin: 6px 0 0 18px; list-style: disc; }
 .confirm-points li { margin-bottom: 6px; }
@@ -702,3 +704,4 @@ label.mlbl { display: block; }
 .impact-table thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--tx3); font-weight: 600; }
 .impact-table tbody th { font-weight: 500; color: var(--tx2); }
 .impact-table tr[data-changed="true"] td:last-child { color: var(--y); font-weight: 700; }
+.danger-zone { border-color: color-mix(in oklch, var(--r) 45%, transparent); }

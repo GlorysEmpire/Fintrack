@@ -1,25 +1,27 @@
 /**
  * Plan settings — under AppShell like the screenshot nav item.
  *
- * The plan, and the editor that changes it.
+ * The plan (and the editor that changes it), plus the deliberate
+ * Reset FinTrack action.
  */
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { getBucketUsage, getUserPlan } from "@/lib/plan";
+import { getResetPreview } from "@/lib/reset";
 import { unreadCount } from "@/lib/inbox";
 import { AppShell } from "@/components/AppShell";
 import { PlanSettings } from "@/components/PlanSettings";
+import { ResetFinTrack } from "@/components/ResetFinTrack";
 
 export default async function SettingsPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [plan, usage, transactionCount, inboxUnread] = await Promise.all([
+  const [plan, usage, resetPreview, inboxUnread] = await Promise.all([
     getUserPlan(user.id),
     getBucketUsage(user.id),
-    prisma.transaction.count({ where: { userId: user.id } }),
+    getResetPreview(user.id),
     unreadCount(user.id),
   ]);
 
@@ -54,8 +56,11 @@ export default async function SettingsPage() {
         plan={plan}
         baseCurrency={user.baseCurrency}
         usage={usage}
-        hasHistory={transactionCount > 0}
+        hasHistory={resetPreview.transactions > 0}
       />
+
+      <div className="sec">Danger zone</div>
+      <ResetFinTrack counts={resetPreview} email={user.email} />
     </AppShell>
   );
 }
