@@ -36,7 +36,10 @@ describe("emergency carry-over", () => {
 
     const next = nextOpeningBalances(states);
     assert.equal(next.emergency, 8_000);
-    assert.equal(next.tithe, undefined); // tithe does not carry by default
+    // Tithe carries over in the tithe-first template (undistributed tithe stays owed)
+    assert.equal(next.tithe, 10_000);
+    // Monthly-reset buckets do not carry
+    assert.equal(next.spend, undefined);
   });
 });
 it("allocates a fixed amount instead of the percentage", () => {

@@ -42,7 +42,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 50_000, FEB),
       tx("e", 2_000, FEB, "spend"),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, FEB);
     const byId = new Map(states.map((s) => [s.bucketId, s]));
 
     assert.equal(states.length, plan.buckets.length);
@@ -64,12 +64,12 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
     assert.equal(emergency.carryOver, true);
 
     const tithe = byId.get("tithe")!;
-    // FEB tithe: opening=0, allocated=5000, spent=0, closing=5000
-    assert.equal(tithe.opening, 0);
+    // Tithe carries over: FEB tithe opening=10000 (JAN closing), allocated=5000, closing=15000
+    assert.equal(tithe.opening, 10_000);
     assert.equal(tithe.allocated, 5_000);
     assert.equal(tithe.spent, 0);
-    assert.equal(tithe.closing, 5_000);
-    assert.equal(tithe.carryOver, false);
+    assert.equal(tithe.closing, 15_000);
+    assert.equal(tithe.carryOver, true);
   });
 
   it("carry-over bucket preserves chain across months", () => {
@@ -80,7 +80,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 100_000, JAN),
       tx("i", 50_000, FEB),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, FEB);
     const emergency = states.find((s) => s.bucketId === "emergency")!;
     assert.equal(emergency.opening, 9_000);
     assert.equal(emergency.allocated, 4_500);
@@ -97,7 +97,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 100_000, JAN),
       tx("i", 50_000, MAR), // February has no transactions
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, MAR);
     const emergency = states.find((s) => s.bucketId === "emergency")!;
     assert.equal(emergency.opening, 9_000);
     assert.equal(emergency.allocated, 4_500);
@@ -115,7 +115,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       tx("i", 50_000, FEB),
       tx("e", 2_000, FEB, "spend"),
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, FEB);
     const spend = states.find((s) => s.bucketId === "spend")!;
     assert.equal(spend.carryOver, false);
     // FEB spend: opening=0, allocated=4050, spent=2000, closing=2050
@@ -145,7 +145,7 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
       { ...tx("i", 100, JAN), currency: "USD" }, // 100 × 1580 = 158,000 NGN
       { ...tx("e", 50, JAN, "spend"), currency: "USD" }, // 50 × 1580 = 79,000 NGN
     ];
-    const states = allTimeBucketStates(txs, plan, "NGN", fx);
+    const states = allTimeBucketStates(txs, plan, "NGN", fx, {}, JAN);
     const spend = states.find((s) => s.bucketId === "spend")!;
     // spend gets 10% of remainder after tithe + emergency:
     // 158,000 → 142,200 → 127,980 → 12,798 allocated; spent 79,000
@@ -232,27 +232,16 @@ describe("allTimeBucketStates (TOTAL bucket scope, multi-month)", () => {
     assert.equal(displayedAlloc > emergencyState.closing, true);
   });
 
-  it("monthly-reset bucket (tithe) shows ₦0 of ₦0 in zero-income month", () => {
-    // Tithe has carryOver=false in the default plan.
-    // Previous month: 100,000 income → tithe allocation = 10,000, ₦0 spent → closing = 10,000
-    // Current month: income = ₦0 → tithe allocation = ₦0
-    // Since tithe is monthly-reset, it does NOT carry over.
-    // THIS MONTH tithe state: opening = 0, allocated = 0, spent = 0, closing = 0
-    // Dashboard shows: ₦0 of ₦0
-
+  it("monthly-reset bucket (spend) shows ₦0 of ₦0 in zero-income month", () => {
+    // Spend has carryOver=false: whatever was left last month does not roll in.
     const currentMonthStates = monthBucketStates(0, plan, {}, {});
-    const titheState = currentMonthStates.find((s) => s.bucketId === "tithe")!;
+    const spendState = currentMonthStates.find((s) => s.bucketId === "spend")!;
 
-    assert.equal(titheState.opening, 0);
-    assert.equal(titheState.allocated, 0);
-    assert.equal(titheState.spent, 0);
-    assert.equal(titheState.closing, 0);
-    assert.equal(titheState.carryOver, false);
-
-    // Dashboard: alloc = opening + allocated = 0 + 0 = 0
-    const displayedAlloc = titheState.opening + titheState.allocated;
-    assert.equal(displayedAlloc, 0);
-    assert.equal(titheState.closing, 0);
+    assert.equal(spendState.opening, 0);
+    assert.equal(spendState.allocated, 0);
+    assert.equal(spendState.spent, 0);
+    assert.equal(spendState.closing, 0);
+    assert.equal(spendState.carryOver, false);
   });
 
   it("carry-over bucket does not reset when current month has no allocation", () => {

@@ -105,64 +105,134 @@ export function transactionTotals(
   return { income, expenses, net: income - expenses };
 }
 
+/** Calendar-month key in local time: July 2026 → "2026-07" */
+export function monthKeyOf(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Every month key from `first` to `last` inclusive, e.g. "2026-07".."2026-09" */
+function monthKeysBetween(first: string, last: string): string[] {
+  const out: string[] = [];
+  let [y, m] = first.split("-").map(Number);
+  for (let key = first; key <= last; ) {
+    out.push(key);
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    key = `${y}-${String(m).padStart(2, "0")}`;
+  }
+  return out;
+}
+
 /**
- * Final per-bucket state after replaying the entire transaction history.
+ * Replay calendar months [first tx month .. lastMonth] in order through the
+ * month-packing chain (monthBucketStates -> nextOpeningBalances).
+ *
+ * Months with no transactions are replayed too (zero income, zero spend), so
+ * carry-over buckets keep their balance and monthly-reset buckets reset —
+ * exactly what would have happened had the app packed each month live.
+ */
+function replayMonths(
+  txs: MoneyTx[],
+  plan: BudgetPlan,
+  base: string,
+  fx: Record<string, number>,
+  lastMonth: string,
+  initialOpenings: Record<string, number> = {}
+): { states: MonthBucketState[] | null; openings: Record<string, number> } {
+  const byMonth = new Map<string, MoneyTx[]>();
+  for (const t of txs) {
+    const key = monthKeyOf(t.date);
+    if (key > lastMonth) continue;
+    const list = byMonth.get(key) ?? [];
+    list.push(t);
+    byMonth.set(key, list);
+  }
+  const keys = [...byMonth.keys()].sort();
+  if (keys.length === 0) return { states: null, openings: { ...initialOpenings } };
+
+  let openings = { ...initialOpenings };
+  let states: MonthBucketState[] | null = null;
+  for (const key of monthKeysBetween(keys[0], lastMonth)) {
+    const monthTxs = byMonth.get(key) ?? [];
+    const income = sumIncome(monthTxs, base, fx);
+    const spent = spentByBucket(monthTxs, base, fx);
+    states = monthBucketStates(income, plan, spent, openings);
+    openings = nextOpeningBalances(states);
+  }
+  return { states, openings };
+}
+
+/**
+ * Opening balances a month SHOULD start with, derived from history.
+ *
+ * Replays every month before `month` (transactions + current plan + FX) and
+ * returns the carry-over that opens `month`. This is the authoritative value
+ * behind BudgetPlan.openingBalancesJson: the DB copy is only a cache of this
+ * result, so it can be recomputed whenever the plan or past transactions
+ * change, without touching any transaction.
+ */
+export function openingBalancesForMonth(
+  txs: MoneyTx[],
+  plan: BudgetPlan | null,
+  base: string,
+  fx: Record<string, number>,
+  month: Date = new Date()
+): Record<string, number> {
+  if (!plan) return {};
+  const prev = new Date(month.getFullYear(), month.getMonth() - 1, 1);
+  return replayMonths(txs, plan, base, fx, monthKeyOf(prev)).openings;
+}
+
+/**
+ * Per-bucket state as of `now`, after replaying the entire transaction history.
  *
  * The DB stores no per-month bucket snapshots: month packing keeps only the
  * CURRENT accumulated carry-over (BudgetPlan.openingBalancesJson) plus the last
- * packed month key. So the authoritative way to reconstruct historical bucket
- * state is to replay every calendar month that has transactions through the SAME
- * chain the packer uses (monthBucketStates -> nextOpeningBalances), carrying
- * positive closings forward exactly as ensureMonthPacked does.
+ * packed month key. So the authoritative way to reconstruct bucket state is to
+ * replay every calendar month — from the first month with transactions up to
+ * and including the current month — through the SAME chain the packer uses
+ * (monthBucketStates -> nextOpeningBalances).
  *
- * TOTAL scope = the final reconstructed MonthBucketState for each bucket after
- * the latest historical month:
- *   opening  = opening balance used in the latest month the bucket was active
- *   allocated = latest month's waterfall allocation
- *   spent     = latest month's spending in that bucket
- *   closing   = opening + allocated - spent (final balance after latest month)
+ * TOTAL scope = the reconstructed MonthBucketState for the current month:
+ *   opening   = carry-over that opened this month
+ *   allocated = this month's waterfall allocation (0 if no income yet)
+ *   spent     = this month's spending in that bucket
+ *   closing   = opening + allocated - spent (what is available now)
  *   carryOver = whether the bucket carries over by plan rule
  *
- * This is the functional counterpart to THIS MONTH's snapshot.buckets, which
- * is the current month's MonthBucketState. The dashboard UI renders both with
- * the same formula: alloc = opening + allocated, available = closing.
- *
- * For carry-over buckets, the latest month already received the right opening
- * because nextOpeningBalances feeds the following month's opening. So the final
- * state already includes the full carry-over chain for all but the absolute
- * latest month, and the absolute latest month opens from that chain.
- *
- * For monthly-reset buckets, opening is always 0 in every month, so the final
- * state is simply the latest month's allocation - spending (the reset is by
- * design; TOTAL does not resurrect old allocation that the plan resets).
+ * Replaying up to the current month (not just the last month that happened to
+ * have transactions) matters: with no activity this month, a carry-over bucket
+ * must show last month's closing as available (₦1,000 of ₦1,000), and a
+ * monthly-reset bucket must show 0 rather than last month's leftover.
  *
  * Note: plan rules are not versioned per month, so reconstruction uses the
- * current plan for every month — the packer itself reads the current plan on
- * each run, so this matches how the app already packs.
+ * current plan for every month — the same plan the packer reconciles with.
  */
 export function allTimeBucketStates(
   txs: MoneyTx[],
   plan: BudgetPlan | null,
   base: string,
   fx: Record<string, number>,
-  initialOpenings: Record<string, number> = {}
+  initialOpenings: Record<string, number> = {},
+  now: Date = new Date()
 ): MonthBucketState[] {
   if (!plan) return [];
 
-  // Group by calendar month (local time), ascending.
-  const byMonth = new Map<string, MoneyTx[]>();
+  // Future-dated transactions extend the replay past the current month.
+  let lastMonth = monthKeyOf(now);
   for (const t of txs) {
-    const d = typeof t.date === "string" ? new Date(t.date) : t.date;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const list = byMonth.get(key) ?? [];
-    list.push(t);
-    byMonth.set(key, list);
+    const key = monthKeyOf(t.date);
+    if (key > lastMonth) lastMonth = key;
   }
-  const monthKeys = [...byMonth.keys()].sort();
 
-  if (monthKeys.length === 0) {
-    // No history yet -> final state is empty for every bucket (matching THIS
-    // MONTH semantics for a user with no current-month activity).
+  const { states } = replayMonths(txs, plan, base, fx, lastMonth, initialOpenings);
+  if (!states) {
+    // No history yet -> every bucket is empty (matching THIS MONTH semantics
+    // for a user with no activity).
     return plan.buckets.map((b) => ({
       bucketId: b.id,
       opening: 0,
@@ -172,18 +242,20 @@ export function allTimeBucketStates(
       carryOver: b.carryOver,
     }));
   }
+  return states;
+}
 
-  let opening = { ...initialOpenings };
-  let latestStates: MonthBucketState[] = [];
-  for (const key of monthKeys) {
-    const monthTxs = byMonth.get(key)!;
-    const income = sumIncome(monthTxs, base, fx);
-    const spent = spentByBucket(monthTxs, base, fx);
-    latestStates = monthBucketStates(income, plan, spent, opening);
-    opening = nextOpeningBalances(latestStates);
+/** True when two opening-balance maps hold the same amounts (missing = 0). */
+export function sameOpeningBalances(
+  a: Record<string, number>,
+  b: Record<string, number>,
+  tolerance = 0.005
+): boolean {
+  const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const id of ids) {
+    if (Math.abs((a[id] || 0) - (b[id] || 0)) > tolerance) return false;
   }
-
-  return latestStates;
+  return true;
 }
 
 /**

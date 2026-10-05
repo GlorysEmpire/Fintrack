@@ -45,6 +45,10 @@ vi.mock("@/lib/money", () => ({
   parseOpeningBalances: () => ({}),
 }));
 
+vi.mock("@/lib/month-close", () => ({
+  ensureMonthPacked: vi.fn(async () => ({ status: "already" })),
+}));
+
 vi.mock("@/lib/inbox", () => ({
   createOverrideInboxMessage: vi.fn(),
 }));

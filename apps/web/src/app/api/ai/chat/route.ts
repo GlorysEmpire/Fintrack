@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { filterMonthTxs, formatMoney, monthSnapshot, type CurrencyCode, type MoneyTx } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
+import { ensureMonthPacked } from "@/lib/month-close";
 import { askSteward, buildUserContext, hasXaiKey } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { getUserPlan } from "@/lib/plan";
@@ -25,6 +26,8 @@ export async function POST(req: Request) {
 
   try {
     const { message } = schema.parse(await req.json());
+    // Human: make sure this month's carry-over is current before using it
+    await ensureMonthPacked(user.id);
     const plan = await getUserPlan(user.id);
     const planRow = await prisma.budgetPlan.findUnique({
       where: { userId: user.id },
