@@ -2,13 +2,15 @@
  * Expenses tab — full list of expense transactions this month.
  */
 import { redirect } from "next/navigation";
-import { formatMoney, type CurrencyCode } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { unreadCount } from "@/lib/inbox";
+import { parseFx } from "@/lib/money";
 import { getUserPlan } from "@/lib/plan";
+import { toTxRow } from "@/lib/tx-row";
 import { AppShell } from "@/components/AppShell";
-import { formatTxDate } from "@/lib/format-date";
+import { TransactionList } from "@/components/TransactionList";
+import { EDIT_WINDOW_RULE } from "@fintrack/domain";
 import Link from "next/link";
 
 export default async function ExpensesPage() {
@@ -24,7 +26,7 @@ export default async function ExpensesPage() {
     getUserPlan(user.id),
     prisma.transaction.findMany({
       where: { userId: user.id, type: "e", date: { gte: start } },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     }),
     unreadCount(user.id),
   ]);
@@ -37,8 +39,8 @@ export default async function ExpensesPage() {
     >
       <h1 style={{ fontSize: 20, marginBottom: 8 }}>Expenses this month</h1>
       <p className="sub">
-        Overrides are tagged. Steward messages land in{" "}
-        <Link href="/inbox">Inbox</Link>.
+        Overspends and cross-bucket spends are tagged. Steward messages land in{" "}
+        <Link href="/inbox">Inbox</Link>. {EDIT_WINDOW_RULE}
       </p>
 
       <div className="card">
@@ -48,40 +50,14 @@ export default async function ExpensesPage() {
             <Link href="/dashboard">Log one from Overview →</Link>
           </div>
         ) : (
-          txs.map((t) => {
-            const bucket =
-              plan?.buckets.find((b) => b.id === t.bucketId) || null;
-            return (
-              <div className="tx-item" key={t.id}>
-                <div>
-                  <div className="tx-name">
-                    {bucket
-                      ? `${bucket.emoji} ${bucket.name}`
-                      : t.bucketId || "Expense"}
-                    {t.note ? (
-                      <span className="muted"> · {t.note}</span>
-                    ) : null}
-                    {t.override && (
-                      <span className="pill pill-y" style={{ marginLeft: 6 }}>
-                        override
-                      </span>
-                    )}
-                  </div>
-                  <div className="tx-meta">
-                    {formatTxDate(t.date)}
-                    {t.reason ? ` · “${t.reason}”` : ""}
-                  </div>
-                </div>
-                <div className="amt-neg">
-                  −
-                  {formatMoney(
-                    t.amount,
-                    t.currency as CurrencyCode
-                  )}
-                </div>
-              </div>
-            );
-          })
+          <TransactionList
+            rows={txs.map(toTxRow)}
+            plan={plan}
+            sources={[]}
+            baseCurrency={user.baseCurrency}
+            fx={parseFx(user.fxRates)}
+            serverNow={new Date().toISOString()}
+          />
         )}
       </div>
     </AppShell>

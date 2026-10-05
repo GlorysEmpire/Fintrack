@@ -7,13 +7,15 @@
  * sec, bucket-card, fab — same as FinTrack.html
  */
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Plus, Receipt } from "lucide-react";
 import {
+  activeBuckets,
+  bucketRuleLabel,
   formatMoney,
-  sortBucketsByCanonicalOrder,
+  sortBucketsByPlanOrder,
+  transactionLockState,
   type BudgetPlan,
   type CurrencyCode,
   type DashboardLayout,
@@ -23,6 +25,7 @@ import {
   visibleSections,
 } from "@fintrack/domain";
 import { LogTransactionModal } from "./LogTransactionModal";
+import { TransactionList } from "./TransactionList";
 import { DashboardCharts } from "./DashboardCharts";
 import { DashboardCustomize } from "./DashboardCustomize";
 import { AppShell } from "./AppShell";
@@ -30,22 +33,10 @@ import { EmptyState } from "./EmptyState";
 import { Money } from "./Money";
 import { SetPasswordPrompt } from "./SetPasswordPrompt";
 import { bucketColor } from "@/lib/bucket-colors";
-import { formatTxDate } from "@/lib/format-date";
+import type { TxRow } from "@/lib/tx-row";
 import { useCountUp } from "@/hooks/useCountUp";
 
-type Tx = {
-  id: string;
-  type: string;
-  amount: number;
-  currency: string;
-  bucketId: string | null;
-  sourceId: string | null;
-  category: string | null;
-  note: string | null;
-  reason: string | null;
-  override: boolean;
-  date: string;
-};
+type Tx = TxRow;
 
 type Source = {
   id: string;
@@ -83,6 +74,8 @@ type Props = {
   historyTransactions?: Tx[];
   inboxUnread: number;
   daysLeft: number;
+  /** Server clock at render time (keeps transaction lock states stable on first paint) */
+  serverNow: string;
   layout: DashboardLayout;
   /** Optional next-month projection (Phase 4) */
   forecastNext?: {
@@ -90,13 +83,6 @@ type Props = {
     lines: { bucketId: string; name: string; emoji: string; allocated: number }[];
   } | null;
 };
-
-function ruleForBucket(meta: { mode: string; percent: number } | undefined) {
-  if (!meta) return "";
-  if (meta.mode === "of_gross") return `${meta.percent}% of gross`;
-  if (meta.mode === "of_remaining") return `${meta.percent}% of post-tithe`;
-  return `${meta.percent}% of remainder`;
-}
 
 export function DashboardClient(props: Props) {
   const {
@@ -115,13 +101,12 @@ export function DashboardClient(props: Props) {
     historyTransactions = [],
     inboxUnread,
     daysLeft,
+    serverNow,
     layout,
     forecastNext = null,
   } = props;
   void onboarding;
-  const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
   /** Summary scope — TOTAL (all history) is the default so returning users
    *  never see their data look wiped on a new month. THIS MONTH shows only the
    *  current calendar month (the previous default behavior). */
@@ -146,7 +131,7 @@ export function DashboardClient(props: Props) {
       out[b.bucketId] = b.closing;
     }
     if (plan) {
-      for (const p of plan.buckets) {
+      for (const p of activeBuckets(plan.buckets)) {
         if (!(p.id in out)) out[p.id] = 0;
       }
     }
@@ -176,31 +161,33 @@ export function DashboardClient(props: Props) {
 
   const sections = visibleSections(layout);
 
-  async function deleteTx(id: string) {
-    if (!confirm("Delete this transaction?")) return;
-    setDeleting(id);
-    try {
-      const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed");
-      router.refresh();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setDeleting(null);
+  /**
+   * Rows for a short list: every transaction that can still be edited is always
+   * shown (so it can be found and corrected while its window is open), then the
+   * most recent locked ones up to `limit`. Order is unchanged (newest first).
+   */
+  function rowsToShow(all: Tx[], limit: number): Tx[] {
+    const at = new Date(serverNow);
+    const editable = all.filter(
+      (t) => !transactionLockState(t.createdAt, at).locked
+    );
+    const keep = new Set(editable.map((t) => t.id));
+    for (const t of all) {
+      if (keep.size >= Math.max(limit, editable.length)) break;
+      keep.add(t.id);
     }
+    return all.filter((t) => keep.has(t.id));
   }
 
-  const bucketLabel = (id: string | null) => {
-    if (!id || !plan) return "Expense";
-    const b = plan.buckets.find((x) => x.id === id);
-    return b ? `${b.emoji} ${b.name}` : id;
-  };
-
-  const sourceLabel = (id: string | null) => {
-    if (!id) return "💵 Income";
-    const s = sources.find((x) => x.id === id);
-    return s ? `${s.emoji} ${s.name}` : "💵 Income";
+  /** Shared props for every transaction list on this page */
+  const txListProps = {
+    plan,
+    sources,
+    baseCurrency,
+    fx,
+    bucketRemaining,
+    monthIncome: snapshot.income,
+    serverNow,
   };
 
   /** Overview metrics with odometer count-up */
@@ -334,7 +321,7 @@ export function DashboardClient(props: Props) {
       );
     }
 
-    const orderedPlan = sortBucketsByCanonicalOrder(plan.buckets);
+    const orderedPlan = sortBucketsByPlanOrder(activeBuckets(plan.buckets));
     const byId = new Map(bucketStates.map((b) => [b.bucketId, b]));
     const rows: {
       id: string;
@@ -361,7 +348,9 @@ export function DashboardClient(props: Props) {
         id: meta.id,
         emoji: meta.emoji || "",
         name: meta.name || meta.id,
-        rule: ruleForBucket(meta),
+        rule: `${bucketRuleLabel(meta, base)}${
+          meta.carryOver ? " · carries over" : " · resets monthly"
+        }`,
         alloc,
         spent,
         left,
@@ -422,7 +411,8 @@ export function DashboardClient(props: Props) {
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div className="wf-amt" style={{ color: r.col }}>
-                      {formatMoney(Math.max(0, r.left), base)}
+                      {r.over ? "−" : ""}
+                      {formatMoney(Math.abs(r.left), base)}
                       {r.over && (
                         <span
                           style={{
@@ -432,7 +422,7 @@ export function DashboardClient(props: Props) {
                           }}
                         >
                           {" "}
-                          OVER
+                          OVERSPENT
                         </span>
                       )}
                     </div>
@@ -538,6 +528,9 @@ export function DashboardClient(props: Props) {
                       <div className="bucket-tx" key={t.id}>
                         <div className="bucket-tx-label">
                           {t.note || t.category || "Expense"}
+                          {t.overspend && (
+                            <span className="bucket-tx-cross">overspent</span>
+                          )}
                           {t.override && (
                             <span className="bucket-tx-cross">cross-bucket</span>
                           )}
@@ -562,9 +555,9 @@ export function DashboardClient(props: Props) {
     );
   }
 
-  /** Recent rows with staggered enter */
+  /** This month's latest rows, each with its edit window or lock */
   function RecentTx() {
-    const rows = transactions.slice(0, 8);
+    const rows = rowsToShow(transactions, 8);
     return (
       <>
         <div className="sec">Recent transactions</div>
@@ -578,96 +571,25 @@ export function DashboardClient(props: Props) {
               onAction={() => setModalOpen(true)}
             />
           ) : (
-            rows.map((t, i) => (
-              <motion.div
-                className="tx-item"
-                key={t.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.03 }}
-              >
-                <div>
-                  <div className="tx-name">
-                    {t.type === "i"
-                      ? sourceLabel(t.sourceId)
-                      : bucketLabel(t.bucketId)}
-                    {t.note ? (
-                      <span className="tx-note"> · {t.note}</span>
-                    ) : null}
-                    {t.bucketId && t.type === "e" && (
-                      <span
-                        style={{
-                          fontSize: 9,
-                          background: "var(--bg3)",
-                          padding: "1px 5px",
-                          borderRadius: 4,
-                          color: "var(--tx3)",
-                          marginLeft: 4,
-                        }}
-                      >
-                        {bucketLabel(t.bucketId)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="tx-meta">{formatTxDate(t.date)}</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div className={t.type === "i" ? "amt-pos" : "amt-neg"}>
-                    <Money
-                      amount={t.type === "i" ? t.amount : -t.amount}
-                      currency={t.currency}
-                      signed
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="tx-del"
-                    disabled={deleting === t.id}
-                    onClick={() => deleteTx(t.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-              </motion.div>
-            ))
+            <TransactionList rows={rows} {...txListProps} />
           )}
         </div>
       </>
     );
   }
 
-    function HistoryTx() {
+  function HistoryTx() {
     if (historyTransactions.length === 0) return null;
-    const rows = historyTransactions.slice(0, 20);
+    const rows = rowsToShow(historyTransactions, 20);
     return (
       <>
         <div className="sec">History (past months)</div>
         <div className="card">
           <p style={{ fontSize: 12, color: "var(--tx3)", marginBottom: 10 }}>
-            These logs are kept. Overview above is this month only.
+            These logs are kept. A transaction you file under an earlier month
+            appears here.
           </p>
-          {rows.map((t) => (
-            <div className="tx-item" key={t.id}>
-              <div>
-                <div className="tx-name">
-                  {t.type === "i"
-                    ? sourceLabel(t.sourceId)
-                    : bucketLabel(t.bucketId)}
-                  {t.note ? (
-                    <span className="tx-note"> · {t.note}</span>
-                  ) : null}
-                </div>
-                <div className="tx-meta">{formatTxDate(t.date)}</div>
-              </div>
-              <div className={t.type === "i" ? "amt-pos" : "amt-neg"}>
-                <Money
-                  amount={t.type === "i" ? t.amount : -t.amount}
-                  currency={t.currency}
-                  signed
-                />
-              </div>
-            </div>
-          ))}
+          <TransactionList rows={rows} {...txListProps} />
         </div>
       </>
     );
@@ -681,7 +603,7 @@ export function DashboardClient(props: Props) {
           <div className="card" key={id}>
             <p style={{ fontSize: 12, color: "var(--tx2)" }}>
               Plan not set —{" "}
-              <Link href="/settings">choose a template in Plan settings</Link>.
+              <Link href="/settings">build your plan in Plan settings</Link>.
             </p>
           </div>
         );
@@ -762,6 +684,7 @@ export function DashboardClient(props: Props) {
         baseCurrency={baseCurrency}
         fx={fx}
         bucketRemaining={bucketRemaining}
+        monthIncome={snapshot.income}
       />
     </AppShell>
   );

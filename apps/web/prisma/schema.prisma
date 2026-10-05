@@ -87,7 +87,7 @@ model InboxMessage {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// override_coach | monthly_review | plan_tip | system
+  /// override_coach | overspend | monthly_review | plan_tip | system
   kind      String   @default("system")
   title     String
   body      String
@@ -193,10 +193,14 @@ model Transaction {
   /// User intentionally spent outside the "normal" bucket
   override  Boolean  @default(false)
   reason    String?
+  /// The expense was more than the bucket held, and the user confirmed it after being warned
+  overspend Boolean  @default(false)
   /// Set when created by a recurring rule expansion
   recurringRuleId String?
   recurringRule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  /// When it happened (the user may file a transaction under an earlier day)
   date      DateTime @default(now())
+  /// When it was recorded. Starts the edit window; never set by the client.
   createdAt DateTime @default(now())
 
   @@index([userId, date])

@@ -9,6 +9,8 @@
  * New buckets explicitly declare their layer.
  * Legacy buckets can still derive their layer from mode
  * while existing plans are being migrated.
+ *
+ * Whether a plan may be saved at all is decided in plan.ts (validatePlan).
  */
 
 import type {
@@ -19,11 +21,38 @@ import type {
   WaterfallResult,
 } from "./types";
 
-const LAYER_ORDER: WaterfallLayer[] = [
+/** The order the layers are filled in. */
+export const WATERFALL_LAYERS: readonly WaterfallLayer[] = [
   "mandatory",
   "off_the_top",
   "life_plan",
 ];
+
+/**
+ * The layer a bucket belongs to.
+ *
+ * New buckets explicitly declare their layer.
+ *
+ * Legacy buckets do not have a layer yet, so we derive
+ * their layer from their existing mode.
+ */
+export function bucketLayer(
+  bucket: Pick<PlanBucket, "layer" | "mode">
+): WaterfallLayer {
+  if (bucket.layer) {
+    return bucket.layer;
+  }
+
+  if (bucket.mode === "of_gross") {
+    return "mandatory";
+  }
+
+  if (bucket.mode === "of_remaining") {
+    return "off_the_top";
+  }
+
+  return "life_plan";
+}
 
 export function allocateWaterfall(
   gross: number,
@@ -38,43 +67,23 @@ export function allocateWaterfall(
     };
   }
 
-  const buckets = [...plan.buckets].sort(
-    (a, b) => a.order - b.order
-  );
+  /*
+   * Archived buckets keep their identity for history,
+   * but they no longer receive income.
+   */
+  const buckets = plan.buckets
+    .filter((bucket) => !bucket.archived)
+    .sort((a, b) => a.order - b.order);
 
   let remaining = gross;
   const lines: WaterfallLine[] = [];
 
   /*
-   * New buckets explicitly declare their layer.
-   *
-   * Legacy buckets do not have a layer yet, so we temporarily
-   * derive their layer from their existing mode.
-   */
-  const getLayer = (
-    bucket: PlanBucket
-  ): WaterfallLayer => {
-    if (bucket.layer) {
-      return bucket.layer;
-    }
-
-    if (bucket.mode === "of_gross") {
-      return "mandatory";
-    }
-
-    if (bucket.mode === "of_remaining") {
-      return "off_the_top";
-    }
-
-    return "life_plan";
-  };
-
-  /*
    * Process the waterfall in its defined layer order.
    */
-  for (const layer of LAYER_ORDER) {
+  for (const layer of WATERFALL_LAYERS) {
     const layerBuckets = buckets.filter(
-      (bucket) => getLayer(bucket) === layer
+      (bucket) => bucketLayer(bucket) === layer
     );
 
     if (!layerBuckets.length) {
@@ -255,9 +264,14 @@ function amountSequential(
 
   /*
    * Percentage of original gross income.
+   *
+   * Never more than what is still left: a plan can not hand
+   * out money that did not come in. This only bites when
+   * fixed amounts earlier in the order have already used
+   * most of a small income.
    */
   if (bucket.mode === "of_gross") {
-    return gross * percent;
+    return Math.min(gross * percent, remaining);
   }
 
   /*
@@ -282,156 +296,5 @@ function toLine(
         : 0,
     mode: bucket.mode,
     carryOver: bucket.carryOver,
-  };
-}
-
-/**
- * Validate the structural integrity of a plan.
- *
- * This is currently a domain-level validation helper.
- * API/service validation can later decide when this should
- * block a user operation.
- */
-export function validatePlan(
-  plan: Pick<
-    BudgetPlan,
-    "buckets" | "name"
-  >
-): {
-  ok: boolean;
-  errors: string[];
-  warnings: string[];
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  if (!plan.name?.trim()) {
-    errors.push(
-      "Plan needs a name."
-    );
-  }
-
-  if (!plan.buckets?.length) {
-    errors.push(
-      "Add at least one bucket."
-    );
-  }
-
-  const ids = new Set<string>();
-
-  for (const bucket of plan.buckets || []) {
-    if (!bucket.id) {
-      errors.push(
-        "Every bucket needs an id."
-      );
-    }
-
-    if (ids.has(bucket.id)) {
-      errors.push(
-        `Duplicate bucket id: ${bucket.id}`
-      );
-    }
-
-    ids.add(bucket.id);
-
-    if (!bucket.name?.trim()) {
-      errors.push(
-        "Every bucket needs a name."
-      );
-    }
-
-    if (
-      bucket.percent < 0 ||
-      bucket.percent > 100
-    ) {
-      errors.push(
-        `${
-          bucket.name || bucket.id
-        }: percent must be 0–100.`
-      );
-    }
-
-    if (
-      bucket.fixed != null &&
-      (
-        !Number.isFinite(
-          bucket.fixed
-        ) ||
-        bucket.fixed < 0
-      )
-    ) {
-      errors.push(
-        `${
-          bucket.name || bucket.id
-        }: fixed amount must be a non-negative number.`
-      );
-    }
-  }
-
-  /*
-   * Life-plan buckets using share_remainder represent
-   * the user's complete life-plan split.
-   *
-   * Their percentages therefore need to add up to 100%.
-   */
-  const lifePlan =
-    (plan.buckets || []).filter(
-      (bucket) =>
-        bucket.layer ===
-          "life_plan" &&
-        bucket.mode ===
-          "share_remainder"
-    );
-
-  if (lifePlan.length) {
-    const sum =
-      lifePlan.reduce(
-        (total, bucket) =>
-          total +
-          bucket.percent,
-        0
-      );
-
-    if (
-      Math.abs(
-        sum - 100
-      ) > 0.5
-    ) {
-      warnings.push(
-        `Life plan split adds up to ${sum.toFixed(
-          1
-        )}% (must equal 100%).`
-      );
-    }
-  }
-
-  /*
-   * Simulate a 100-unit income to identify money that
-   * would remain unallocated.
-   */
-  if (plan.buckets?.length) {
-    const simulation =
-      allocateWaterfall(
-        100,
-        plan
-      );
-
-    if (
-      simulation.unallocated >
-      1
-    ) {
-      warnings.push(
-        `About ${simulation.unallocated.toFixed(
-          1
-        )}% of income is unallocated with this plan.`
-      );
-    }
-  }
-
-  return {
-    ok:
-      errors.length === 0,
-    errors,
-    warnings,
   };
 }

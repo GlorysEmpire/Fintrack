@@ -1,14 +1,14 @@
 /**
  * MONTHLY CARRY-OVER
  *
- * Some buckets (especially Emergency) should build up over time instead of
+ * Some buckets (Emergency, Tithe, Save…) should build up over time instead of
  * resetting to ₦0 every month.
  *
  * - carryOver: true  → leftover closing balance becomes next month's opening
  * - carryOver: false → month starts fresh; only that month's allocation counts
  *
- * Default product rule: Emergency carry-over is ON; user can turn it off
- * in Settings with plain-language copy (see emergencyCarryOverCopy).
+ * Carry-over is an ordinary per-bucket rule in the plan. The plain-language
+ * text for it lives in plan.ts (carryOverCopy).
  */
 import type { BudgetPlan } from "./types";
 import { allocateWaterfall } from "./waterfall";
@@ -52,7 +52,14 @@ export function monthBucketStates(
   });
 }
 
-/** From this month's closing balances, what opens next month? */
+/**
+ * From this month's closing balances, what opens next month?
+ *
+ * Only money that is left carries over. A bucket that ends the month overspent
+ * (closing below zero) opens the next month at zero: the shortfall is not
+ * carried forward. That is the current product rule; changing it is a product
+ * decision, not a refactor.
+ */
 export function nextOpeningBalances(
   states: MonthBucketState[]
 ): Record<string, number> {
@@ -63,48 +70,4 @@ export function nextOpeningBalances(
     }
   }
   return out;
-}
-
-/**
- * Apply the Settings toggle for emergency carry-over.
- * Updates any bucket whose id/name looks like "emergency".
- */
-export function applyEmergencyCarryOverSetting(
-  plan: BudgetPlan,
-  enabled: boolean
-): BudgetPlan {
-  return {
-    ...plan,
-    emergencyCarryOverDefault: enabled,
-    buckets: plan.buckets.map((b) => {
-      const isEmergency =
-        b.id === "emergency" || b.name.toLowerCase().includes("emergency");
-      if (isEmergency) {
-        return { ...b, carryOver: enabled };
-      }
-      return b;
-    }),
-  };
-}
-
-/** Plain-English text for the Settings UI toggle */
-export function emergencyCarryOverCopy(enabled: boolean): {
-  title: string;
-  body: string;
-  example: string;
-} {
-  if (enabled) {
-    return {
-      title: "Carry over emergency balance (recommended)",
-      body: "Money left in Emergency at month end stays there and adds to next month. Best for building a real safety reserve over time.",
-      example:
-        "Example: You allocated ₦90,000 and spent ₦10,000. Next month starts with ₦80,000 already in Emergency, plus that month’s new allocation.",
-    };
-  }
-  return {
-    title: "Reset emergency each month",
-    body: "Emergency bucket restarts from zero each month based only on that month’s income split. Use this if you want a fresh monthly envelope.",
-    example:
-      "Example: Leftover emergency money does not roll forward. Each month only gets what that month’s plan allocates.",
-  };
 }

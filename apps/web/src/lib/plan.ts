@@ -3,12 +3,19 @@
  *
  * Plans are stored as JSON for buckets so we can evolve the shape without
  * a rigid column per bucket field. Domain package owns the pure logic;
- * this file only loads/saves and applies settings like emergency carry-over.
+ * this file only loads and saves.
+ *
+ * A saved plan is the user's own configuration. It is copied from a template
+ * once, when the user chooses that template; a later change to a template in
+ * code never reaches a plan that is already saved.
  */
-import type { BudgetPlan, PlanBucket } from "@fintrack/domain";
+import type { BucketUsage, BudgetPlan, PlanBucket } from "@fintrack/domain";
 import {
-  applyEmergencyCarryOverSetting,
+  bucketUsageCount,
+  finalizePlanBuckets,
+  normalizePlanBuckets,
   planFromTemplate,
+  validatePlan,
 } from "@fintrack/domain";
 import { prisma } from "./db";
 
@@ -20,13 +27,19 @@ export function parsePlan(row: {
   emergencyCarryOverDefault: boolean;
   bucketsJson: string;
 }): BudgetPlan {
-  const buckets = JSON.parse(row.bucketsJson) as PlanBucket[];
+  let raw: unknown = [];
+  try {
+    raw = JSON.parse(row.bucketsJson);
+  } catch {
+    raw = [];
+  }
   return {
     id: row.id,
     name: row.name,
     templateId: row.templateId || undefined,
     emergencyCarryOverDefault: row.emergencyCarryOverDefault,
-    buckets,
+    // Read defensively: older rows may lack `layer` (see normalizePlanBuckets)
+    buckets: normalizePlanBuckets(raw),
   };
 }
 
@@ -37,93 +50,72 @@ export async function getUserPlan(userId: string): Promise<BudgetPlan | null> {
 }
 
 /**
- * Create/replace the user's plan from a named template
- * (tithe_first, pay_yourself_first, 50_30_20, …).
- * Emergency carry-over is ON by default.
+ * How many of the user's transactions and recurring rules point at each bucket.
+ * A bucket with any may be archived but not removed.
  */
-export async function savePlanFromTemplate(
-  userId: string,
-  templateId: string
-) {
-  const plan = planFromTemplate(templateId, `tmp`);
-  if (!plan) throw new Error("Unknown template");
-
-  const withCarry = applyEmergencyCarryOverSetting(plan, true);
-
-  return prisma.budgetPlan.upsert({
-    where: { userId },
-    create: {
-      userId,
-      name: withCarry.name,
-      templateId: withCarry.templateId,
-      emergencyCarryOverDefault: true,
-      bucketsJson: JSON.stringify(withCarry.buckets),
-    },
-    update: {
-      name: withCarry.name,
-      templateId: withCarry.templateId,
-      emergencyCarryOverDefault: true,
-      bucketsJson: JSON.stringify(withCarry.buckets),
-    },
-  });
+export async function getBucketUsage(userId: string): Promise<BucketUsage> {
+  const [transactions, rules] = await Promise.all([
+    prisma.transaction.groupBy({
+      by: ["bucketId"],
+      where: { userId, bucketId: { not: null } },
+      _count: { _all: true },
+    }),
+    prisma.recurringRule.groupBy({
+      by: ["bucketId"],
+      where: { userId, bucketId: { not: null } },
+      _count: { _all: true },
+    }),
+  ]);
+  const usage: BucketUsage = {};
+  for (const group of [...transactions, ...rules]) {
+    const id = group.bucketId;
+    if (!id || id === "__proto__") continue;
+    usage[id] = bucketUsageCount(usage, id) + group._count._all;
+  }
+  return usage;
 }
 
-/** Save a fully custom plan (API / future bucket editor) */
-export async function saveCustomPlan(
+/**
+ * The single place a plan is written. Callers have already validated it.
+ *
+ * Only the plan itself is written. The cached opening balances are left alone:
+ * they are derived, and ensureMonthPacked() rebuilds them from history.
+ * No transaction is ever touched here.
+ */
+export async function writePlan(
   userId: string,
-  data: {
-    name: string;
-    buckets: PlanBucket[];
-    emergencyCarryOverDefault?: boolean;
-    templateId?: string | null;
-  }
+  data: { name: string; templateId: string | null; buckets: PlanBucket[] }
 ) {
-  const emergencyCarryOverDefault = data.emergencyCarryOverDefault ?? true;
-  let buckets = data.buckets;
-  const planLike = {
-    id: "x",
-    name: data.name,
-    buckets,
-    emergencyCarryOverDefault,
-  };
-  // Keep emergency bucket flag in sync with the global setting
-  buckets = applyEmergencyCarryOverSetting(
-    planLike,
-    emergencyCarryOverDefault
-  ).buckets;
-
+  const bucketsJson = JSON.stringify(finalizePlanBuckets(data.buckets));
   return prisma.budgetPlan.upsert({
     where: { userId },
     create: {
       userId,
       name: data.name,
-      templateId: data.templateId ?? null,
-      emergencyCarryOverDefault,
-      bucketsJson: JSON.stringify(buckets),
+      templateId: data.templateId,
+      bucketsJson,
     },
     update: {
       name: data.name,
-      templateId: data.templateId ?? null,
-      emergencyCarryOverDefault,
-      bucketsJson: JSON.stringify(buckets),
+      templateId: data.templateId,
+      bucketsJson,
     },
   });
 }
 
 /**
- * Settings toggle: should leftover Emergency money roll into next month?
- * Updates both the boolean flag and the emergency bucket's carryOver field.
+ * Create the user's FIRST plan as a copy of a named template
+ * (tithe_first, pay_yourself_first, 50_30_20, …). Used by onboarding only;
+ * changing an existing plan goes through proposePlanChange().
  */
-export async function setEmergencyCarryOver(userId: string, enabled: boolean) {
-  const row = await prisma.budgetPlan.findUnique({ where: { userId } });
-  if (!row) return null;
-  const plan = parsePlan(row);
-  const updated = applyEmergencyCarryOverSetting(plan, enabled);
-  return prisma.budgetPlan.update({
-    where: { userId },
-    data: {
-      emergencyCarryOverDefault: enabled,
-      bucketsJson: JSON.stringify(updated.buckets),
-    },
+export async function savePlanFromTemplate(userId: string, templateId: string) {
+  const plan = planFromTemplate(templateId, "tmp");
+  if (!plan) throw new Error("Unknown template");
+  if (!validatePlan(plan).ok) throw new Error("Template is not a valid plan");
+
+  return writePlan(userId, {
+    name: plan.name,
+    templateId: plan.templateId ?? null,
+    buckets: plan.buckets,
   });
 }

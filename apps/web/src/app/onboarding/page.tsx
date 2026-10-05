@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * FIRST-LAUNCH ONBOARDING
+ * FIRST-LAUNCH ONBOARDING (also where Reset FinTrack sends you back to)
  *
- * 1) Choose plan path (default / templates / skip)
+ * 1) Choose plan path (default / templates / build your own / skip)
  * 2) After a template is chosen: demo preview of ₦100,000 waterfall split
- *    (UI only — never written as real balances or sources)
+ *    (UI only — never written as real balances or sources).
+ *    Building your own plan uses the plan editor, which has its own preview.
  * 3) Income sources: opt-in generic presets and/or custom — or skip (zero sources)
  * 4) Continue → save plan + chosen sources → dashboard
  */
@@ -18,10 +19,11 @@ import {
   type CurrencyCode,
 } from "@fintrack/domain";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { PlanEditor } from "@/components/PlanEditor";
 import { bucketColor } from "@/lib/bucket-colors";
 import { GENERIC_INCOME_PRESETS } from "@/lib/income-presets";
 
-type View = "choose" | "templates" | "demo" | "sources";
+type View = "choose" | "templates" | "custom" | "demo" | "sources";
 
 const DEMO_GROSS = 100_000;
 const DEMO_CURRENCY: CurrencyCode = "NGN";
@@ -61,6 +63,24 @@ export default function OnboardingPage() {
   const [customEmoji, setCustomEmoji] = useState("💵");
   const [customCurrency, setCustomCurrency] = useState<CurrencyCode>("NGN");
   const actionsRef = useRef<HTMLDivElement | null>(null);
+  /** Fixed amounts in a custom plan are in the account's base currency */
+  const [baseCurrency, setBaseCurrency] = useState("NGN");
+
+  useEffect(() => {
+    if (view !== "custom") return;
+    let cancelled = false;
+    fetch("/api/settings/plan")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data?.ok && typeof data.baseCurrency === "string") {
+          setBaseCurrency(data.baseCurrency);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
 
   const demoLines = useMemo(() => {
     if (!pendingTemplateId) return null;
@@ -240,11 +260,13 @@ export default function OnboardingPage() {
               type="button"
               className="option"
               disabled={loading}
-              onClick={() => setView("templates")}
+              onClick={() => setView("custom")}
             >
-              <h3>I&apos;ll customize in Settings</h3>
+              <h3>Build my own plan</h3>
               <p>
-                Pick a template close to your style, then fine-tune in Settings.
+                Choose your own buckets, their order, percentages or fixed
+                amounts, and what carries over. You can change it later in Plan
+                settings.
               </p>
             </button>
 
@@ -309,6 +331,25 @@ export default function OnboardingPage() {
             >
               ← Back
             </button>
+          </>
+        )}
+
+        {view === "custom" && (
+          <>
+            <h1>Build your plan</h1>
+            <p className="sub">
+              Add your own buckets, or load a template and change it. Nothing is
+              saved until you finish setup.
+            </p>
+            <PlanEditor
+              plan={null}
+              baseCurrency={baseCurrency}
+              usage={{}}
+              hasHistory={false}
+              mode="onboarding"
+              onSubmit={(plan) => goToSources({ path: "custom", ...plan })}
+              onCancel={() => setView("choose")}
+            />
           </>
         )}
 

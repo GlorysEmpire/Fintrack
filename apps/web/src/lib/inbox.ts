@@ -1,9 +1,10 @@
 /**
  * Inbox helpers — accountability messages stored for the user.
- * Triggered after override spends; later: monthly reviews, AI digests.
+ * Triggered after override spends and confirmed overspends;
+ * later: monthly reviews, AI digests.
  */
 import { prisma } from "./db";
-import { overrideInboxDraft } from "@fintrack/domain";
+import { overrideInboxDraft, overspendInboxDraft } from "@fintrack/domain";
 
 export async function createOverrideInboxMessage(opts: {
   userId: string;
@@ -24,6 +25,38 @@ export async function createOverrideInboxMessage(opts: {
     data: {
       userId: opts.userId,
       kind: "override_coach",
+      title: draft.title,
+      body: draft.body,
+      relatedTxId: opts.txId,
+    },
+  });
+}
+
+/**
+ * Accountability note for an expense the user confirmed even though it was
+ * more than the bucket held. The expense itself is always saved as recorded.
+ */
+export async function createOverspendInboxMessage(opts: {
+  userId: string;
+  txId: string;
+  bucketName: string;
+  amountLabel: string;
+  availableLabel: string;
+  overByLabel: string;
+  reason?: string | null;
+}) {
+  const draft = overspendInboxDraft({
+    bucketName: opts.bucketName,
+    amountLabel: opts.amountLabel,
+    availableLabel: opts.availableLabel,
+    overByLabel: opts.overByLabel,
+    reason: opts.reason,
+  });
+
+  return prisma.inboxMessage.create({
+    data: {
+      userId: opts.userId,
+      kind: "overspend",
       title: draft.title,
       body: draft.body,
       relatedTxId: opts.txId,

@@ -109,17 +109,30 @@ export async function ensureMonthPacked(
   });
 
   if (!lastMonthPacked) {
-    console.log("MONTH PACK: packed", { userId, packedMonth: previous });
+    console.log("MONTH PACK: packed", { packedMonth: previous });
     return { status: "packed" };
   }
 
-  // Human: the month was already packed, but under different rules/data.
-  // Log the before/after so a correction is always traceable.
+  // Human: the month was already packed, but under different rules/data
+  // (a plan change, or a past transaction added, edited or deleted).
+  // Log THAT it happened, never the balances themselves: the caller gets the
+  // before/after in the result if it needs them.
   console.log("MONTH PACK: reconciled stale openings", {
-    userId,
     lastMonthClosed: planRow.lastMonthClosed,
-    before: stored,
-    after: expected,
+    bucketsChanged: changedBucketCount(stored, expected),
   });
   return { status: "reconciled", before: stored, after: expected };
+}
+
+/** How many buckets' opening balances differ (for logging without amounts). */
+function changedBucketCount(
+  a: Record<string, number>,
+  b: Record<string, number>
+): number {
+  const ids = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let n = 0;
+  for (const id of ids) {
+    if (!sameOpeningBalances({ [id]: a[id] || 0 }, { [id]: b[id] || 0 })) n += 1;
+  }
+  return n;
 }

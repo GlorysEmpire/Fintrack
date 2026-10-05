@@ -18,15 +18,16 @@ import { parseFx, parseOpeningBalances } from "@/lib/money";
 import { getUserDashboardLayout } from "@/lib/dashboard-layout";
 import { DashboardClient } from "@/components/DashboardClient";
 import { ensureMonthPacked } from "@/lib/month-close";
+import { toTxRow } from "@/lib/tx-row";
 
 export default async function DashboardPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const packingResult = await ensureMonthPacked(user.id);
-
-  console.log("DASHBOARD: packing result", packingResult);
+  // Rebuild this month's opening balances from history if anything changed
+  // (a plan change, or a past transaction added, edited or deleted).
+  await ensureMonthPacked(user.id);
 
   const plan = await getUserPlan(user.id);
   const planRow = await prisma.budgetPlan.findUnique({
@@ -44,7 +45,7 @@ export default async function DashboardPage() {
     }),
     prisma.transaction.findMany({
       where: { userId: user.id },
-      orderBy: { date: "desc" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     }),
     unreadCount(user.id),
     getUserDashboardLayout(user.id),
@@ -137,36 +138,11 @@ export default async function DashboardPage() {
       totals={totals}
       allTimeBuckets={allTimeBuckets}
       sampleWaterfall={sampleWaterfall}
-      transactions={monthRows.map((t) => ({
-        id: t.id,
-        type: t.type,
-        amount: t.amount,
-        currency: t.currency,
-        bucketId: t.bucketId,
-        sourceId: t.sourceId,
-        category: t.category,
-        note: t.note,
-        reason: t.reason,
-        override: t.override,
-        date: t.date.toISOString(),
-      }))}
-      historyTransactions={allTxs
-        .filter((t) => t.date < start)
-        .map((t) => ({
-          id: t.id,
-          type: t.type,
-          amount: t.amount,
-          currency: t.currency,
-          bucketId: t.bucketId,
-          sourceId: t.sourceId,
-          category: t.category,
-          note: t.note,
-          reason: t.reason,
-          override: t.override,
-          date: t.date.toISOString(),
-        }))}
+      transactions={monthRows.map(toTxRow)}
+      historyTransactions={allTxs.filter((t) => t.date < start).map(toTxRow)}
       inboxUnread={inboxUnread}
       daysLeft={daysLeft}
+      serverNow={now.toISOString()}
       layout={layout}
       forecastNext={forecastNext}
     />

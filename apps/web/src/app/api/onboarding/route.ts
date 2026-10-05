@@ -9,11 +9,12 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { jsonError, routeError, unauthorized } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { saveCustomPlan, savePlanFromTemplate } from "@/lib/plan";
-import type { PlanBucket } from "@fintrack/domain";
-import { validatePlan } from "@fintrack/domain";
+import { getUserPlan, savePlanFromTemplate, writePlan } from "@/lib/plan";
+import { planFields, toPlanBuckets } from "@/lib/plan-schema";
+import { finalizePlanBuckets, getTemplate, validatePlan } from "@fintrack/domain";
 import {
   createIncomeSourcesForUser,
   resolveIncomeSourceInputs,
@@ -42,23 +43,14 @@ const schema = z.discriminatedUnion("path", [
     path: z.literal("skip"),
     ...sourcesFields,
   }),
-  z.object({
-    path: z.literal("custom"),
-    name: z.string().min(1),
-    buckets: z.array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        emoji: z.string(),
-        percent: z.number(),
-        mode: z.enum(["of_gross", "of_remaining", "share_remainder"]),
-        carryOver: z.boolean(),
-        order: z.number(),
-      })
-    ),
-    emergencyCarryOverDefault: z.boolean().optional(),
-    ...sourcesFields,
-  }),
+  // Same plan shape as Plan settings (keeps `layer`, `fixed`, `archived`)
+  z
+    .object({
+      path: z.literal("custom"),
+      ...planFields,
+      ...sourcesFields,
+    })
+    .strict(),
   z.object({
     path: z.literal("template"),
     templateId: z.string(),
@@ -88,12 +80,19 @@ async function applySources(
 
 export async function POST(req: Request) {
   const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return unauthorized();
 
   try {
     const body = schema.parse(await req.json());
+
+    // Onboarding creates a FIRST plan. It must never be a side door that
+    // replaces an existing plan without the confirmation Plan settings asks for.
+    if (body.path !== "skip" && (await getUserPlan(user.id))) {
+      return jsonError(
+        409,
+        "You already have a plan. Change it in Plan settings, where you can see what a change does to your history first."
+      );
+    }
 
     // Skip: no plan created — user can set one later in Settings
     if (body.path === "skip") {
@@ -110,6 +109,9 @@ export async function POST(req: Request) {
         body.path === "default"
           ? body.templateId || "tithe_first"
           : body.templateId;
+      if (!getTemplate(templateId)) {
+        return jsonError(400, "Unknown template.");
+      }
       await savePlanFromTemplate(user.id, templateId);
       await applySources(user.id, body);
       await prisma.user.update({
@@ -119,20 +121,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, onboarding: "completed" });
     }
 
-    // Custom plan from API (future visual builder will call this)
-    const buckets = body.buckets as PlanBucket[];
-    const check = validatePlan({ name: body.name, buckets });
+    // Custom plan built in the plan editor
+    const name = body.name.trim();
+    const buckets = finalizePlanBuckets(toPlanBuckets(body.buckets));
+    const check = validatePlan({ name, buckets });
     if (!check.ok) {
-      return NextResponse.json(
-        { ok: false, error: check.errors.join(" "), warnings: check.warnings },
-        { status: 400 }
-      );
+      return jsonError(400, check.errors.join(" "), {
+        errors: check.errors,
+        issues: check.issues.filter((i) => i.level === "error"),
+        warnings: check.warnings,
+      });
     }
 
-    await saveCustomPlan(user.id, {
-      name: body.name,
+    await writePlan(user.id, {
+      name,
+      templateId:
+        body.templateId && getTemplate(body.templateId) ? body.templateId : null,
       buckets,
-      emergencyCarryOverDefault: body.emergencyCarryOverDefault ?? true,
     });
     await applySources(user.id, body);
     await prisma.user.update({
@@ -145,7 +150,6 @@ export async function POST(req: Request) {
       warnings: check.warnings,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Invalid request";
-    return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+    return routeError(e, "POST /api/onboarding");
   }
 }
