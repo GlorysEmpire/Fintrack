@@ -422,7 +422,7 @@ export function DashboardClient(props: Props) {
                           }}
                         >
                           {" "}
-                          OVERSPENT
+                          BELOW ZERO
                         </span>
                       )}
                     </div>
@@ -528,9 +528,6 @@ export function DashboardClient(props: Props) {
                       <div className="bucket-tx" key={t.id}>
                         <div className="bucket-tx-label">
                           {t.note || t.category || "Expense"}
-                          {t.overspend && (
-                            <span className="bucket-tx-cross">overspent</span>
-                          )}
                           {t.override && (
                             <span className="bucket-tx-cross">cross-bucket</span>
                           )}

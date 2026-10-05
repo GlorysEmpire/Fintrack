@@ -39,14 +39,6 @@ export function formatDay(input: string | Date, now: Date = new Date()): string 
   return p.year === thisYear ? `${p.day} ${p.month}` : `${p.day} ${p.month} ${p.year}`;
 }
 
-/** e.g. "September 2026" — the month a transaction is filed under */
-export function formatMonthYear(input: string | Date): string {
-  const d = typeof input === "string" ? new Date(input) : input;
-  if (Number.isNaN(d.getTime())) return "";
-  const p = partsOf(d, { month: "long", year: "numeric" });
-  return `${p.month} ${p.year}`;
-}
-
 /**
  * e.g. "18 Jul, 15:47" — transaction / inbox lists.
  * A transaction the user filed under a chosen day has no real time of day, so

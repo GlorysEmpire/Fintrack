@@ -39,7 +39,7 @@ describe("monthSnapshot", () => {
 });
 
 describe("expenseFriction", () => {
-  it("asks for confirmation instead of blocking when amount exceeds remaining", () => {
+  it("blocks an expense that is more than the bucket has available", () => {
     const txs = [
       {
         type: "i" as const,
@@ -58,9 +58,7 @@ describe("expenseFriction", () => {
     });
     // spend budget is 8100; 50k is way over
     assert.equal(f.wouldOverspend, true);
-    assert.equal(f.requiresConfirmation, true);
+    assert.equal(f.blocked, true);
     assert.equal(f.overBy, 41_900);
-    // There is no hard block any more: reality must stay recordable
-    assert.equal("blocked" in f, false);
   });
 });

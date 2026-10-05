@@ -28,8 +28,6 @@ export const createTransactionSchema = z
     note: shortText.optional().nullable(),
     reason: shortText.optional().nullable(),
     date: day.optional().nullable(),
-    /** Sent only after the user has seen the overspend warning and agreed */
-    confirmOverspend: z.boolean().optional().default(false),
   })
   .strict();
 
@@ -44,13 +42,12 @@ export const updateTransactionSchema = z
     note: shortText.optional().nullable(),
     reason: shortText.optional().nullable(),
     date: day.optional().nullable(),
-    confirmOverspend: z.boolean().optional().default(false),
   })
   .strict();
 
 /**
  * 200 saved · 400 not valid · 404 not yours / not found ·
- * 409 valid, but needs the user's explicit confirmation first (overspend) ·
+ * 422 refused: the bucket does not hold what was asked for (blocked at zero) ·
  * 423 locked: the edit window has closed.
  */
 export function transactionResponse(result: TransactionResult) {
@@ -59,18 +56,16 @@ export function transactionResponse(result: TransactionResult) {
       return NextResponse.json({
         ok: true,
         transaction: result.transaction,
-        overspend: result.overspend,
         crossBucket: result.crossBucket,
       });
     case "invalid":
       return jsonError(400, result.error, {
         ...(result.crossBucket ? { crossBucket: true } : {}),
       });
-    case "needs_confirmation":
-      return jsonError(409, result.message, {
-        needsConfirmation: true,
-        kind: "overspend",
-        overspend: result.overspend,
+    case "blocked":
+      return jsonError(422, result.error, {
+        blocked: true,
+        shortfall: result.shortfall,
       });
     case "locked":
       return jsonError(423, result.error, {

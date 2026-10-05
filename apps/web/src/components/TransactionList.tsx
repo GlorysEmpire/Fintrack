@@ -122,11 +122,6 @@ export function TransactionList({
                     <span className="tx-note"> · {categoryLabel(t.category)}</span>
                   ) : null}
                   {t.note ? <span className="tx-note"> · {t.note}</span> : null}
-                  {t.overspend && (
-                    <span className="pill pill-r tx-pill" title="This was more than the bucket held when it was recorded. You confirmed it.">
-                      overspent
-                    </span>
-                  )}
                   {t.override && (
                     <span className="pill pill-y tx-pill" title="Spent on a category that does not match this bucket.">
                       cross-bucket

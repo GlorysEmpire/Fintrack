@@ -1,6 +1,6 @@
 /**
  * Transaction lifecycle (Created → Editable window → Locked), transaction dates,
- * and the overspend check that warns instead of blocking.
+ * and the rule that a bucket is blocked at zero.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -20,6 +20,7 @@ import {
 } from "./transaction-rules";
 import {
   allTimeBucketStates,
+  bucketAvailableOn,
   bucketStatesForMonth,
   expenseFriction,
   monthKeyOf,
@@ -179,66 +180,77 @@ describe("transaction dates", () => {
   });
 });
 
-describe("overspending: warn and confirm, never block", () => {
+describe("a bucket is blocked at zero", () => {
   const thisMonthIncome = [tx("i", 100_000, new Date(2026, 9, 2))]; // Spend gets 8,100
   const check = (amountBase: number, txs: MoneyTx[] = thisMonthIncome, bucketId = "spend", date = OCT_NOW) =>
     expenseFriction({ amountBase, bucketId, plan, txs, base: "NGN", fx, date, now: OCT_NOW });
 
-  it("an expense that fits needs no confirmation", () => {
-    const f = check(8_100);
-    assert.equal(f.wouldOverspend, false);
-    assert.equal(f.requiresConfirmation, false);
-    assert.equal(f.remaining, 8_100);
-    assert.equal(f.remainingAfter, 0);
-    assert.equal(f.overBy, 0);
+  it("an expense that fits is allowed, right down to zero", () => {
+    assert.equal(check(1_000).blocked, false);
+    const all = check(8_100);
+    assert.equal(all.blocked, false);
+    assert.equal(all.wouldOverspend, false);
+    assert.equal(all.remaining, 8_100);
+    assert.equal(all.overBy, 0);
   });
 
-  it("an expense over the balance asks for confirmation and says by how much", () => {
+  it("an expense over the balance is blocked, and says what is available against what was asked", () => {
     const f = check(10_000);
+    assert.equal(f.blocked, true);
     assert.equal(f.wouldOverspend, true);
-    assert.equal(f.requiresConfirmation, true);
+    assert.equal(f.remaining, 8_100);
     assert.equal(f.overBy, 1_900);
-    assert.equal(f.remainingAfter, -1_900);
-    assert.equal(
-      f.message,
-      "This is ₦1,900 more than the ₦8,100 left in Spend. Saving it puts the bucket ₦1,900 over."
-    );
+    assert.equal(f.message, "Spend has ₦8,100 available. That does not cover ₦10,000.");
   });
 
-  it("never returns a refusal: there is no blocked state", () => {
-    for (const amount of [1, 10_000, 9_999_999]) {
-      assert.equal("blocked" in check(amount), false);
+  it("a bucket at zero blocks any amount", () => {
+    const spentOut = [...thisMonthIncome, tx("e", 8_100, new Date(2026, 9, 3), "spend")];
+    for (const amount of [1, 500, 10_000]) {
+      const f = check(amount, spentOut);
+      assert.equal(f.blocked, true, String(amount));
+      assert.equal(f.emptyBucket, true);
+    }
+    assert.equal(check(500, spentOut).message, "Spend has nothing available. That does not cover ₦500.");
+  });
+
+  it("a bucket that never received money (no income yet) is blocked too", () => {
+    const f = check(500, []);
+    assert.equal(f.blocked, true);
+    assert.equal(f.remaining, 0);
+    assert.equal(f.message, "Spend has nothing available. That does not cover ₦500.");
+  });
+
+  it("the message never suggests taking the money from another bucket", () => {
+    const suggestion = /another|other bucket|different bucket|instead|split|move|transfer|withdraw|choose|pick/i;
+    const messages = [
+      check(10_000).message,
+      check(500, []).message,
+      check(3_000, [tx("i", 34_000, SEP), ...thisMonthIncome], "spend", new Date(2026, 8, 25)).message,
+      check(100).message,
+    ];
+    for (const message of messages) {
+      assert.equal(suggestion.test(message), false, message);
     }
   });
 
-  it("a bucket with nothing in it (no income yet) can still be spent from, after a warning", () => {
-    const f = check(500, []);
-    assert.equal(f.emptyBucket, true);
-    assert.equal(f.requiresConfirmation, true);
-    assert.equal(f.overBy, 500);
-    assert.equal(f.message, "Spend has nothing left. Saving this puts it ₦500 over.");
+  it("shows decimals when whole numbers would hide the difference", () => {
+    const f = check(8_100.4);
+    assert.equal(f.blocked, true);
+    assert.equal(f.message, "Spend has ₦8100.00 available. That does not cover ₦8100.40.");
   });
 
-  it("spending again from an already overspent bucket says how far over it will be", () => {
-    const txs = [...thisMonthIncome, tx("e", 9_000, new Date(2026, 9, 3), "spend")];
-    const f = check(1_000, txs);
-    assert.equal(f.remaining, -900);
-    assert.equal(f.overBy, 1_000);
-    assert.equal(f.remainingAfter, -1_900);
-    assert.equal(f.message, "Spend is already ₦900 over. Saving this puts it ₦1,900 over.");
-  });
-
-  it("with no plan there is nothing to overspend", () => {
+  it("with no plan there are no buckets, so nothing is blocked", () => {
     const f = expenseFriction({ amountBase: 500, bucketId: "spend", plan: null, txs: [], base: "NGN", fx, now: OCT_NOW });
-    assert.equal(f.requiresConfirmation, false);
+    assert.equal(f.blocked, false);
   });
 
   it("carried-over money counts as available", () => {
     // September left ₦1,000 in Tithe; October has no income yet.
     const history = [tx("i", 34_000, SEP), tx("e", 2_400, SEP, "tithe")];
-    assert.equal(check(600, history, "tithe").requiresConfirmation, false);
+    assert.equal(check(600, history, "tithe").blocked, false);
+    assert.equal(check(1_000, history, "tithe").blocked, false);
     const over = check(1_500, history, "tithe");
-    assert.equal(over.requiresConfirmation, true);
+    assert.equal(over.blocked, true);
     assert.equal(over.remaining, 1_000);
     assert.equal(over.overBy, 500);
   });
@@ -248,43 +260,99 @@ describe("overspending: warn and confirm, never block", () => {
     // September's Spend was 10% of the life plan = 2,754; October's is 8,100.
     const inSeptember = check(3_000, history, "spend", new Date(2026, 8, 25));
     assert.equal(inSeptember.remaining, 2_754);
-    assert.equal(inSeptember.requiresConfirmation, true);
-    assert.equal(check(3_000, history, "spend", OCT_NOW).requiresConfirmation, false);
+    assert.equal(inSeptember.blocked, true);
+    assert.equal(
+      inSeptember.message,
+      "Spend has ₦2,754 available for that date. That does not cover ₦3,000."
+    );
+    assert.equal(check(3_000, history, "spend", OCT_NOW).blocked, false);
   });
 
-  it("a past-dated expense from a carry-over bucket also has to fit what the bucket holds today", () => {
+  it("a past-dated expense from a carry-over bucket has to fit every month since", () => {
     // Tithe had ₦1,000 left in September; it rolled into October and was spent there.
-    const history = [
+    const spentSince = [
       tx("i", 34_000, SEP),
       tx("e", 2_400, SEP, "tithe"),
       tx("e", 1_000, new Date(2026, 9, 3), "tithe"),
     ];
-    const f = check(500, history, "tithe", new Date(2026, 8, 25));
-    assert.equal(f.remaining, 0); // September had 1,000, but today there is nothing left
-    assert.equal(f.requiresConfirmation, true);
+    const f = check(500, spentSince, "tithe", new Date(2026, 8, 25));
+    assert.equal(f.remaining, 0); // September had 1,000, but none of it is left today
+    assert.equal(f.blocked, true);
+  });
+
+  it("…including a month in between, even if the bucket has recovered since", () => {
+    // Aug: Tithe 1,000 left. Sep: all of it spent. Oct: new income brings 5,000.
+    const history = [
+      tx("i", 10_000, new Date(2026, 7, 12)),
+      tx("e", 1_000, SEP, "tithe"),
+      tx("i", 50_000, new Date(2026, 9, 2)),
+    ];
+    // August shows 1,000 and today shows 5,000, but spending in August would
+    // have left September short. The lowest point since August is 0.
+    assert.equal(bucketAvailableOn(history, plan, "NGN", fx, "tithe", new Date(2026, 7, 20), OCT_NOW), 0);
+    assert.equal(check(500, history, "tithe", new Date(2026, 7, 20)).blocked, true);
+    // Today the bucket really does have 5,000
+    assert.equal(bucketAvailableOn(history, plan, "NGN", fx, "tithe", OCT_NOW, OCT_NOW), 5_000);
   });
 
   it("when editing, the transaction being edited is left out of the check", () => {
     const original = tx("e", 8_000, new Date(2026, 9, 3), "spend");
     const withOriginal = [...thisMonthIncome, original];
-    // Checked against everything (wrong): 8,000 already spent, so 8,100 would look over.
-    assert.equal(check(8_100, withOriginal).requiresConfirmation, true);
+    // Checked against everything (wrong): 8,000 already spent, so 8,100 looks too much.
+    assert.equal(check(8_100, withOriginal).blocked, true);
     // Checked the right way: without the transaction being replaced, 8,100 fits.
-    assert.equal(check(8_100, thisMonthIncome).requiresConfirmation, false);
+    assert.equal(check(8_100, thisMonthIncome).blocked, false);
   });
 
   it("checks in the user's base currency", () => {
-    // $10 at 1,580 = ₦15,800 against ₦8,100 left
+    // $10 at 1,580 = ₦15,800 against ₦8,100 available
     const f = check(10 * 1580);
+    assert.equal(f.blocked, true);
     assert.equal(f.overBy, 7_700);
   });
 });
 
-describe("a confirmed overspend becomes part of the financial state", () => {
+describe("bucketAvailableOn", () => {
+  const history = [tx("i", 34_000, SEP), tx("e", 2_400, SEP, "tithe")];
+  const available = (bucketId: string, date: Date, txs: MoneyTx[] = history) =>
+    bucketAvailableOn(txs, plan, "NGN", fx, bucketId, date, OCT_NOW);
+
+  it("is zero with no history, before the first transaction, and for a bucket not in the plan", () => {
+    assert.equal(available("spend", OCT_NOW, []), 0);
+    assert.equal(available("tithe", new Date(2026, 6, 10)), 0); // July, before any income
+    assert.equal(available("not_a_bucket", OCT_NOW), 0);
+    assert.equal(bucketAvailableOn(history, null, "NGN", fx, "tithe", OCT_NOW, OCT_NOW), 0);
+  });
+
+  it("for a bucket that resets, is what was left in that month only", () => {
+    assert.equal(available("spend", SEP), 2_754);
+    assert.equal(available("spend", OCT_NOW), 0); // reset: nothing carried into October
+  });
+
+  it("for a bucket that carries over, is the lowest balance from that month to now", () => {
+    assert.equal(available("tithe", SEP), 1_000);
+    assert.equal(available("tithe", OCT_NOW), 1_000);
+    assert.equal(available("emergency", SEP), 3_060);
+  });
+
+  it("an archived bucket has nothing available", () => {
+    const archived: BudgetPlan = {
+      ...plan,
+      buckets: plan.buckets.map((b) => (b.id === "tithe" ? { ...b, archived: true } : b)),
+    };
+    assert.equal(bucketAvailableOn(history, archived, "NGN", fx, "tithe", SEP, OCT_NOW), 0);
+  });
+});
+
+describe("a bucket can still end up below zero without a new expense", () => {
+  // No expense is ever accepted past a bucket's balance. But history is rebuilt
+  // with the current plan, so lowering a bucket's share (or correcting an income)
+  // can leave past spending larger than what the bucket now receives. These rows
+  // stand for that situation: the engine has to stay consistent through it.
   const txs = [
     tx("i", 100_000, new Date(2026, 9, 2)),
-    tx("e", 10_000, new Date(2026, 9, 3), "spend"), // 1,900 over
-    tx("e", 12_000, new Date(2026, 9, 3), "emergency"), // 3,000 over, carry-over bucket
+    tx("e", 10_000, new Date(2026, 9, 3), "spend"), // 1,900 more than Spend receives
+    tx("e", 12_000, new Date(2026, 9, 3), "emergency"), // 3,000 more, carry-over bucket
   ];
 
   it("the bucket shows the shortfall, and the month still adds up", () => {
@@ -298,7 +366,7 @@ describe("a confirmed overspend becomes part of the financial state", () => {
     assert.deepEqual(allTimeBucketStates(txs, plan, "NGN", fx, {}, OCT_NOW), states);
   });
 
-  it("the expense is counted in full in the real totals: nothing is trimmed to fit", () => {
+  it("what actually happened is still counted in full", () => {
     assert.deepEqual(transactionTotals(txs, "NGN", fx), {
       income: 100_000,
       expenses: 22_000,
@@ -306,7 +374,14 @@ describe("a confirmed overspend becomes part of the financial state", () => {
     });
   });
 
-  it("current rule: a shortfall is not carried into the next month", () => {
+  it("a bucket below zero has nothing available, so nothing more can be spent from it", () => {
+    const f = expenseFriction({ amountBase: 1, bucketId: "spend", plan, txs, base: "NGN", fx, date: OCT_NOW, now: OCT_NOW });
+    assert.equal(f.remaining, -1_900);
+    assert.equal(f.blocked, true);
+    assert.equal(f.message, "Spend has nothing available. That does not cover ₦1.");
+  });
+
+  it("a shortfall is not carried into the next month", () => {
     const next = nextOpeningBalances(bucketStatesForMonth(txs, plan, "NGN", fx, OCT_NOW));
     // Emergency carries over, but it ended ₦3,000 short: November opens at 0, not −3,000.
     assert.equal(next.emergency, undefined);

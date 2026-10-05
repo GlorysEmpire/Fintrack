@@ -1,15 +1,20 @@
 /**
  * Financial integrity after Week 1.
  *
- * Week 1 lets users date, edit and delete transactions, overspend buckets and
- * change their plan. None of that may break the reconciliation from PR #2:
+ * Week 1 lets users date, edit and delete transactions and change their plan.
+ * None of that may break the reconciliation from PR #2:
  *
  *     closing = opening + allocated − spent
  *
  * for every bucket in every month, with next month's opening following from
  * this month's closing. These tests walk whole histories month by month and
  * check exactly that, across: a normal month, an empty month, carry-over,
- * overspending, transactions dated in the past, plan changes, and many months.
+ * a bucket below zero, transactions dated in the past, plan changes, and many
+ * months.
+ *
+ * About "below zero": a new expense is never accepted past a bucket's balance.
+ * A bucket can still end up below zero when history is recalculated (a plan
+ * change, or a corrected income), so the engine must reconcile through that too.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -85,7 +90,7 @@ const customPlan: BudgetPlan = {
  * Five months of history:
  *   Jun  normal month
  *   Jul  empty month (nothing recorded)
- *   Aug  overspending (Spend and the carry-over Emergency both go negative)
+ *   Aug  two buckets below zero (Spend, and the carry-over Emergency)
  *   Sep  foreign-currency income, carry-over drawn down
  *   Oct  current month, one income so far
  */
@@ -151,7 +156,7 @@ for (const plan of [titheFirst, customPlan]) {
       assert.equal(validatePlan(plan).ok, true);
     });
 
-    it("normal month, empty month, carry-over, overspending and multiple months all reconcile", () => {
+    it("normal month, empty month, carry-over, buckets below zero and multiple months all reconcile", () => {
       const [jun, jul, aug] = assertReconciles(history, plan);
 
       // Normal month: money left in a carry-over bucket…
@@ -164,7 +169,7 @@ for (const plan of [titheFirst, customPlan]) {
       assert.equal(state(jul, "spend").opening, 0);
       assert.equal(state(jul, "spend").closing, 0);
 
-      // Overspending is recorded in full: both buckets end the month negative.
+      // Spending is counted in full: both buckets end the month below zero.
       assert.ok(state(aug, "spend").closing < 0);
       assert.ok(state(aug, "emergency").closing < 0);
       assert.equal(state(aug, "spend").spent, 30_000);

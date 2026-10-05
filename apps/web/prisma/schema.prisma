@@ -87,7 +87,7 @@ model InboxMessage {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// override_coach | overspend | monthly_review | plan_tip | system
+  /// override_coach | monthly_review | plan_tip | system
   kind      String   @default("system")
   title     String
   body      String
@@ -175,6 +175,15 @@ model IncomeSource {
 }
 
 // Ready for Sprint 2 transactions (income / expense)
+//
+// LEFTOVER COLUMN: migration 20261005150000_transaction_overspend added a
+// boolean "overspend" column for a warn-and-confirm overspend flow. The product
+// rule is now "a bucket is blocked at zero", so nothing reads or writes it and
+// it is no longer part of this model. The column is deliberately still in the
+// database: dropping it while the previous version of the app is still serving
+// would break that version (it selects the column). Remove it with its own
+// migration once this version is the one that is live:
+//   ALTER TABLE "Transaction" DROP COLUMN IF EXISTS "overspend";
 model Transaction {
   id        String   @id @default(cuid())
   userId    String
@@ -193,8 +202,6 @@ model Transaction {
   /// User intentionally spent outside the "normal" bucket
   override  Boolean  @default(false)
   reason    String?
-  /// The expense was more than the bucket held, and the user confirmed it after being warned
-  overspend Boolean  @default(false)
   /// Set when created by a recurring rule expansion
   recurringRuleId String?
   recurringRule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)

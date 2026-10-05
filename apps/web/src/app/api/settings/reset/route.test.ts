@@ -65,7 +65,7 @@ async function userWithEverything(extra: Partial<User> = {}) {
     data: { userId: user.id, type: "e", amount: 5_000, bucketId: "save", recurringRuleId: rule.id },
   });
   await testDb.inboxMessage.create({
-    data: { userId: user.id, kind: "overspend", title: "t", body: "b", relatedTxId: spent.id },
+    data: { userId: user.id, kind: "override_coach", title: "t", body: "b", relatedTxId: spent.id },
   });
   await testDb.aiMessage.create({ data: { userId: user.id, role: "user", content: "am I on track?" } });
   await testDb.session.create({

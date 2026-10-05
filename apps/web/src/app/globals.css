@@ -68,7 +68,6 @@
   --r: var(--color-destructive);
   --rdim: color-mix(in oklch, var(--color-destructive) 12%, transparent);
   --y: var(--color-bucket-spend);
-  --ydim: color-mix(in oklch, var(--color-bucket-spend) 12%, transparent);
   --bl: var(--color-bucket-emergency);
   --pu: var(--color-bucket-tithe);
   --pink: var(--color-bucket-give);
@@ -87,8 +86,7 @@
   --gdim: color-mix(in oklch, var(--color-primary) 14%, transparent);
   --r: var(--color-destructive);
   --rdim: color-mix(in oklch, var(--color-destructive) 12%, transparent);
-  --y: oklch(0.55 0.13 85);
-  --ydim: color-mix(in oklch, var(--color-bucket-spend) 22%, transparent);
+  --y: var(--color-bucket-spend);
   --bl: var(--color-bucket-emergency);
   --pu: var(--color-bucket-tithe);
   --pink: var(--color-bucket-give);
@@ -602,9 +600,6 @@ label.mlbl { display: block; }
 .btn-danger:hover { opacity: .9; }
 .btn-danger-outline { background: transparent; border: 1px solid var(--r); color: var(--r); }
 .btn-danger-outline:hover { background: var(--rdim); }
-.confirm-points { font-size: 13px; color: var(--tx2); line-height: 1.6; margin-top: 12px; }
-.confirm-points ul { margin: 6px 0 0 18px; list-style: disc; }
-.confirm-points li { margin-bottom: 6px; }
 
 /* Radix-based confirm dialog: sits above the log modal (200) and the FAB (100) */
 .cdlg-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.75); backdrop-filter: blur(6px); z-index: 300; }
@@ -648,7 +643,6 @@ label.mlbl { display: block; }
 .tx-act-del:hover { color: var(--r); border-color: var(--r); }
 .tx-pill { margin-left: 6px; vertical-align: middle; white-space: nowrap; }
 .tx-pill-muted { background: var(--bg3); color: var(--tx3); }
-.friction strong { font-weight: 600; }
 
 /* ─── PLAN EDITOR ────────────────────────────────────────────────── */
 .plan-editor .minp { background: var(--bg3); }
@@ -703,5 +697,5 @@ label.mlbl { display: block; }
 .impact-table th:first-child { text-align: left; }
 .impact-table thead th { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--tx3); font-weight: 600; }
 .impact-table tbody th { font-weight: 500; color: var(--tx2); }
-.impact-table tr[data-changed="true"] td:last-child { color: var(--y); font-weight: 700; }
+.impact-table tr[data-changed="true"] td:last-child { color: var(--tx); font-weight: 700; }
 .danger-zone { border-color: color-mix(in oklch, var(--r) 45%, transparent); }

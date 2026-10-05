@@ -16,8 +16,6 @@ export type TxRow = {
   reason: string | null;
   /** Spent on a category that does not match the bucket (with a written reason) */
   override: boolean;
-  /** More than the bucket held; the user confirmed it after being warned */
-  overspend: boolean;
   /** When it happened */
   date: string;
   /** When it was recorded: the edit window runs from here */
@@ -36,7 +34,6 @@ export function toTxRow(t: Transaction): TxRow {
     note: t.note,
     reason: t.reason,
     override: t.override,
-    overspend: t.overspend,
     date: t.date.toISOString(),
     createdAt: t.createdAt.toISOString(),
   };

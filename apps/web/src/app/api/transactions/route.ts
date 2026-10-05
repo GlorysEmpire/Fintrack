@@ -2,10 +2,10 @@
  * GET  /api/transactions — list recent transactions (optional ?month=1 for current month)
  * POST /api/transactions — log income or expense
  *
- * An expense over its bucket's balance is never refused: the first POST comes
- * back 409 with the explanation, and the same request with
- * confirmOverspend: true saves it. Cross-bucket category spend requires note
- * or reason text. Optional `date` ("YYYY-MM-DD") files it under an earlier day.
+ * A bucket is blocked at zero: an expense that is more than its bucket has
+ * available is refused (422) and nothing is saved. Cross-bucket category spend
+ * requires note or reason text. Optional `date` ("YYYY-MM-DD") files it under
+ * an earlier day.
  */
 import { NextResponse } from "next/server";
 import { routeError, unauthorized } from "@/lib/api";

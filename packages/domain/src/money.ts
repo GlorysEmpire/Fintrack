@@ -4,7 +4,7 @@
  */
 import type { BudgetPlan } from "./types";
 import type { CurrencyCode } from "./fx";
-import { formatMoney, toBase } from "./fx";
+import { CURRENCY_SYMBOLS, formatMoney, toBase } from "./fx";
 import { allocateWaterfall } from "./waterfall";
 import {
   monthBucketStates,
@@ -147,7 +147,9 @@ function replayMonths(
   base: string,
   fx: Record<string, number>,
   lastMonth: string,
-  initialOpenings: Record<string, number> = {}
+  initialOpenings: Record<string, number> = {},
+  /** Called with each replayed month's states, in order (read-only) */
+  onMonth?: (monthKey: string, states: MonthBucketState[]) => void
 ): { states: MonthBucketState[] | null; openings: Record<string, number> } {
   const byMonth = new Map<string, MoneyTx[]>();
   for (const t of txs) {
@@ -167,6 +169,7 @@ function replayMonths(
     const income = sumIncome(monthTxs, base, fx);
     const spent = spentByBucket(monthTxs, base, fx);
     states = monthBucketStates(income, plan, spent, openings);
+    onMonth?.(key, states);
     openings = nextOpeningBalances(states);
   }
   return { states, openings };
@@ -327,8 +330,62 @@ export function bucketStatesForMonth(
 /** Amounts closer than half a minor unit are treated as equal (money is a Float). */
 export const MONEY_EPSILON = 0.005;
 
+/** The rule behind expenseFriction, in one sentence for any screen that needs it. */
+export const BUCKET_LIMIT_RULE =
+  "A bucket can only spend what it holds. It can not go below zero.";
+
+/**
+ * The most that can be spent from a bucket on `date` without the bucket ever
+ * dropping below zero.
+ *
+ * For a bucket that resets each month, that is what is left in that month.
+ * For a bucket that carries over, what was left in that month rolled forward
+ * and may have been spent since. So it is the LOWEST balance the bucket reaches
+ * from that month up to now: spending more than that in the past would push
+ * some later month below zero.
+ *
+ * `txs` is the history WITHOUT the expense being considered (when editing,
+ * leave the transaction being edited out).
+ */
+export function bucketAvailableOn(
+  txs: MoneyTx[],
+  plan: BudgetPlan | null,
+  base: string,
+  fx: Record<string, number>,
+  bucketId: string,
+  date: Date,
+  now: Date = new Date()
+): number {
+  if (!plan) return 0;
+  const bucket = plan.buckets.find((b) => b.id === bucketId && !b.archived);
+  if (!bucket) return 0;
+
+  const fromKey = monthKeyOf(date);
+  // Replay to the end of history, or to now, whichever is later
+  let lastKey = monthKeyOf(now) > fromKey ? monthKeyOf(now) : fromKey;
+  for (const t of txs) {
+    const key = monthKeyOf(t.date);
+    if (key > lastKey) lastKey = key;
+  }
+
+  const closingByMonth = new Map<string, number>();
+  replayMonths(txs, plan, base, fx, lastKey, {}, (key, states) => {
+    if (key < fromKey) return;
+    closingByMonth.set(
+      key,
+      states.find((s) => s.bucketId === bucketId)?.closing ?? 0
+    );
+  });
+
+  // A month that was not replayed (before the first transaction, or no history
+  // at all) is a month in which the bucket held nothing.
+  const inThatMonth = closingByMonth.get(fromKey) ?? 0;
+  if (!bucket.carryOver) return inThatMonth;
+  return Math.min(inThatMonth, ...closingByMonth.values());
+}
+
 export interface ExpenseFriction {
-  /** What the bucket can cover before this expense (negative if already overspent) */
+  /** The most the bucket can cover on the expense's date (negative if it is already below zero) */
   remaining: number;
   /** opening + allocated for the expense's month */
   allocated: number;
@@ -336,41 +393,36 @@ export interface ExpenseFriction {
   spent: number;
   /** How much of this expense the bucket can not cover (0 when it fits) */
   overBy: number;
-  /** The bucket's balance once this expense is saved */
-  remainingAfter: number;
-  /** true if this spend is more than what is left in the bucket */
+  /** true if this spend is more than the bucket can cover */
   wouldOverspend: boolean;
-  /** true if the bucket has nothing left at all */
+  /** true if the bucket has nothing available at all */
   emptyBucket: boolean;
+  /** true when the expense must be refused: a bucket is never spent below zero */
+  blocked: boolean;
   /**
-   * true when the expense may only be saved after the user has been warned and
-   * has confirmed. It is never a refusal: what actually happened must always be
-   * recordable.
+   * What the bucket has available against what was asked for, in plain words.
+   * It never suggests drawing on another bucket: that would defeat the point
+   * of having buckets.
    */
-  requiresConfirmation: boolean;
-  /** Plain-language explanation for the user */
   message: string;
 }
 
 /**
  * Check a bucket's balance before saving an expense.
  *
- * FinTrack never blocks an expense: if the money was spent, it gets recorded.
- * When the expense is more than the bucket holds, this says so and asks for an
- * explicit confirmation (requiresConfirmation) instead.
+ * Product rule: a bucket is blocked at zero. An expense that is more than the
+ * bucket has available is refused (blocked), and the user is told what is
+ * available against what they asked for. Nothing here ever recommends taking
+ * the money from a different bucket.
  *
- * `txs` is the user's history WITHOUT the expense being checked (when editing,
- * leave the transaction being edited out).
- *
- * The balance is the one for the expense's own month. For a past-dated expense
- * in a carry-over bucket the money may have rolled forward and been spent
- * since, so what the bucket holds today is checked as well and the smaller of
- * the two counts.
+ * The balance is the one for the expense's own date (see bucketAvailableOn), so
+ * a past-dated expense can not push any month below zero either.
  */
 export function expenseFriction(opts: {
   amountBase: number;
   bucketId: string;
   plan: BudgetPlan | null;
+  /** The user's history WITHOUT the expense being checked */
   txs: MoneyTx[];
   base: string;
   fx: Record<string, number>;
@@ -388,48 +440,42 @@ export function expenseFriction(opts: {
       allocated: 0,
       spent: 0,
       overBy: 0,
-      remainingAfter: 0,
       wouldOverspend: false,
       emptyBucket: true,
-      requiresConfirmation: false,
+      blocked: false,
       message:
         "No budget plan yet. Expense can still log. Set a plan in Settings when ready.",
     };
   }
 
   const bucket = plan.buckets.find((b) => b.id === bucketId && !b.archived);
-  const name = bucket?.name || "this bucket";
+  const name = bucket?.name || "This bucket";
   const row = bucketStatesForMonth(txs, plan, base, fx, date).find(
     (b) => b.bucketId === bucketId
   );
-  let remaining = row ? row.closing : 0;
+  const remaining = bucketAvailableOn(txs, plan, base, fx, bucketId, date, now);
   const allocated = row ? row.opening + row.allocated : 0;
   const spent = row?.spent || 0;
-
-  // Past-dated spend from a carry-over bucket also draws down today's balance.
-  const pastMonth = monthKeyOf(date) < monthKeyOf(now);
-  if (pastMonth && bucket?.carryOver) {
-    const today = allTimeBucketStates(txs, plan, base, fx, {}, now).find(
-      (b) => b.bucketId === bucketId
-    );
-    if (today) remaining = Math.min(remaining, today.closing);
-  }
 
   const emptyBucket = remaining <= MONEY_EPSILON;
   const wouldOverspend = amountBase > remaining + MONEY_EPSILON;
   const overBy = wouldOverspend ? amountBase - Math.max(0, remaining) : 0;
-  const remainingAfter = remaining - amountBase;
 
-  const money = (n: number) => formatMoney(n, base as CurrencyCode);
-  let message = `Within what is left in ${name}.`;
+  // Whole units normally; two decimals only when rounding would hide the gap
+  const hidesGap =
+    wouldOverspend &&
+    Math.round(Math.max(0, remaining)) === Math.round(amountBase);
+  const money = (n: number) =>
+    hidesGap
+      ? `${CURRENCY_SYMBOLS[base as CurrencyCode] || ""}${n.toFixed(2)}`
+      : formatMoney(n, base as CurrencyCode);
+  const forThatDate = monthKeyOf(date) < monthKeyOf(now) ? " for that date" : "";
+
+  let message = `${name} has ${money(Math.max(0, remaining))} available${forThatDate}.`;
   if (wouldOverspend) {
-    if (remaining < -MONEY_EPSILON) {
-      message = `${name} is already ${money(-remaining)} over. Saving this puts it ${money(-remainingAfter)} over.`;
-    } else if (emptyBucket) {
-      message = `${name} has nothing left. Saving this puts it ${money(overBy)} over.`;
-    } else {
-      message = `This is ${money(overBy)} more than the ${money(remaining)} left in ${name}. Saving it puts the bucket ${money(overBy)} over.`;
-    }
+    message = emptyBucket
+      ? `${name} has nothing available${forThatDate}. That does not cover ${money(amountBase)}.`
+      : `${name} has ${money(remaining)} available${forThatDate}. That does not cover ${money(amountBase)}.`;
   }
 
   return {
@@ -437,10 +483,9 @@ export function expenseFriction(opts: {
     allocated,
     spent,
     overBy,
-    remainingAfter,
     wouldOverspend,
     emptyBucket,
-    requiresConfirmation: wouldOverspend,
+    blocked: wouldOverspend,
     message,
   };
 }

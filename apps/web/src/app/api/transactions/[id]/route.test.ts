@@ -157,61 +157,75 @@ describe("editing while the window is open", () => {
   });
 });
 
-describe("editing and overspending", () => {
-  it("an edit that pushes the bucket over is warned about, then saved once confirmed", async () => {
+describe("editing and the bucket limit", () => {
+  it("refuses an edit the bucket can not cover, and changes nothing", async () => {
     const user = await funded();
     const tx = await seedTx(user.id, { type: "e", amount: 8_000, bucketId: "spend" });
 
-    // Its own ₦8,000 is being replaced, so ₦8,100 is available: 9,000 is 900 over
-    const warned = await patch(tx.id, { amount: 9_000 });
-    expect(warned.status).toBe(409);
-    const data = await warned.json();
-    expect(data.overspend.remaining).toBe(8_100);
-    expect(data.overspend.overBy).toBe(900);
-    expect((await row(tx.id))?.amount).toBe(8_000);
-
-    const saved = await patch(tx.id, { amount: 9_000, confirmOverspend: true });
-    expect(saved.status).toBe(200);
-    const after = await row(tx.id);
-    expect(after?.amount).toBe(9_000);
-    expect(after?.overspend).toBe(true);
-    const notes = await testDb.inboxMessage.findMany({ where: { userId: user.id } });
-    expect(notes.map((n) => n.kind)).toEqual(["overspend"]);
-  });
-
-  it("an edit within what the bucket holds needs no confirmation", async () => {
-    const user = await funded();
-    const tx = await seedTx(user.id, { type: "e", amount: 8_000, bucketId: "spend" });
-    expect((await patch(tx.id, { amount: 8_100 })).status).toBe(200);
-    expect((await row(tx.id))?.overspend).toBe(false);
-  });
-
-  it("fixing only the note of an overspent transaction does not ask again", async () => {
-    const user = await funded();
-    const tx = await seedTx(user.id, {
-      type: "e",
-      amount: 10_000,
+    // Its own ₦8,000 is being replaced, so ₦8,100 is available: 9,000 is too much
+    const res = await patch(tx.id, { amount: 9_000 });
+    expect(res.status).toBe(422);
+    const data = await res.json();
+    expect(data.blocked).toBe(true);
+    expect(data.shortfall).toEqual({
       bucketId: "spend",
-      overspend: true,
+      bucketName: "Spend",
+      available: 8_100,
+      requested: 9_000,
     });
-    const res = await patch(tx.id, { note: "typo fixed" });
-    expect(res.status).toBe(200);
-    const after = await row(tx.id);
-    expect(after?.note).toBe("typo fixed");
-    expect(after?.overspend).toBe(true);
+    expect(data.error).toBe(
+      "Spend has ₦8,100 available. That does not cover ₦9,000. Nothing was changed."
+    );
+    expect((await row(tx.id))?.amount).toBe(8_000);
     expect(await testDb.inboxMessage.count({ where: { userId: user.id } })).toBe(0);
   });
 
-  it("an overspent transaction corrected to fit is no longer marked overspent", async () => {
+  it("allows an edit up to exactly what the bucket holds", async () => {
     const user = await funded();
-    const tx = await seedTx(user.id, {
-      type: "e",
-      amount: 10_000,
-      bucketId: "spend",
-      overspend: true,
-    });
-    expect((await patch(tx.id, { amount: 1_000 })).status).toBe(200);
-    expect((await row(tx.id))?.overspend).toBe(false);
+    const tx = await seedTx(user.id, { type: "e", amount: 8_000, bucketId: "spend" });
+    expect((await patch(tx.id, { amount: 8_100 })).status).toBe(200);
+    expect((await row(tx.id))?.amount).toBe(8_100);
+  });
+
+  it("refuses moving an expense to a bucket that can not cover it", async () => {
+    const user = await funded();
+    // Give gets ₦8,100 too; ₦8,000 of it is already spent
+    await seedTx(user.id, { type: "e", amount: 8_000, bucketId: "give" });
+    const tx = await seedTx(user.id, { type: "e", amount: 500, bucketId: "spend" });
+
+    const res = await patch(tx.id, { bucketId: "give", category: "charity" });
+    expect(res.status).toBe(422);
+    expect((await res.json()).shortfall.available).toBe(100);
+    expect((await row(tx.id))?.bucketId).toBe("spend");
+  });
+
+  it("refuses moving an expense to an earlier month whose bucket could not cover it", async () => {
+    const user = await funded(); // no income last month, so Spend held nothing then
+    const tx = await seedTx(user.id, { type: "e", amount: 500, bucketId: "spend" });
+    const res = await patch(tx.id, { date: toDateInputValue(midMonth(-1)) });
+    expect(res.status).toBe(422);
+    expect((await row(tx.id))?.date.getTime()).toBe(tx.date.getTime());
+  });
+
+  it("a note-only edit is never re-checked against the balance", async () => {
+    const user = await funded();
+    // A bucket already below zero (possible after a plan change): 10,000 against 8,100
+    const tx = await seedTx(user.id, { type: "e", amount: 10_000, bucketId: "spend" });
+    const res = await patch(tx.id, { note: "typo fixed" });
+    expect(res.status).toBe(200);
+    expect((await row(tx.id))?.note).toBe("typo fixed");
+  });
+
+  it("lowering an expense is always allowed, even while the bucket is below zero", async () => {
+    const user = await funded();
+    const tx = await seedTx(user.id, { type: "e", amount: 10_000, bucketId: "spend" });
+
+    // 9,000 is still more than 8,100, but it takes less than before
+    expect((await patch(tx.id, { amount: 9_000 })).status).toBe(200);
+    expect((await row(tx.id))?.amount).toBe(9_000);
+    // Raising it again is refused
+    expect((await patch(tx.id, { amount: 9_500 })).status).toBe(422);
+    expect((await row(tx.id))?.amount).toBe(9_000);
   });
 });
 
@@ -301,10 +315,10 @@ describe("deleting while the window is open", () => {
     const keep = await seedTx(user.id, { type: "e", amount: 300, bucketId: "spend" });
     const gone = await seedTx(user.id, { type: "e", amount: 500, bucketId: "spend" });
     await testDb.inboxMessage.create({
-      data: { userId: user.id, kind: "overspend", title: "a", body: "b", relatedTxId: gone.id },
+      data: { userId: user.id, kind: "override_coach", title: "a", body: "b", relatedTxId: gone.id },
     });
     await testDb.inboxMessage.create({
-      data: { userId: user.id, kind: "overspend", title: "c", body: "d", relatedTxId: keep.id },
+      data: { userId: user.id, kind: "override_coach", title: "c", body: "d", relatedTxId: keep.id },
     });
 
     const res = await del(gone.id);

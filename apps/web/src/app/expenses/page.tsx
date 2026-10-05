@@ -39,7 +39,7 @@ export default async function ExpensesPage() {
     >
       <h1 style={{ fontSize: 20, marginBottom: 8 }}>Expenses this month</h1>
       <p className="sub">
-        Overspends and cross-bucket spends are tagged. Steward messages land in{" "}
+        Cross-bucket spends are tagged. Steward messages land in{" "}
         <Link href="/inbox">Inbox</Link>. {EDIT_WINDOW_RULE}
       </p>
 

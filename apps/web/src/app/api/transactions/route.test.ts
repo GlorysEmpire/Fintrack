@@ -1,6 +1,6 @@
 /**
- * Recording transactions: dates, ownership, and overspending as
- * warn → explain → confirm → save (never a refusal, never a trimmed amount).
+ * Recording transactions: dates, ownership, and the rule that a bucket is
+ * blocked at zero (an expense it can not cover is refused and not saved).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -94,7 +94,6 @@ describe("POST /api/transactions — recording", () => {
     const [row] = await expensesOf(user.id);
     expect(row.bucketId).toBe("spend");
     expect(row.amount).toBe(1_000);
-    expect(row.overspend).toBe(false);
     expect(row.note).toBe("coffee");
   });
 
@@ -105,7 +104,6 @@ describe("POST /api/transactions — recording", () => {
     expect(res.status).toBe(200);
     const [row] = await expensesOf(user.id);
     expect(row.bucketId).toBeNull();
-    expect(row.overspend).toBe(false);
   });
 
   it("only accepts a bucket that is an active bucket in the user's plan", async () => {
@@ -118,7 +116,7 @@ describe("POST /api/transactions — recording", () => {
     signIn(user);
 
     for (const bucketId of ["nope", "constructor", "__proto__", "give", null]) {
-      const res = await post(expense({ bucketId, confirmOverspend: true }));
+      const res = await post(expense({ bucketId, amount: 1 }));
       expect(res.status).toBe(400);
     }
     expect(await expensesOf(user.id)).toHaveLength(0);
@@ -127,6 +125,8 @@ describe("POST /api/transactions — recording", () => {
   it("rejects a field it does not know, and nonsense amounts", async () => {
     const user = await funded();
     expect((await post(expense({ createdAt: "2020-01-01T00:00:00.000Z" }))).status).toBe(400);
+    // The old confirm-and-save switch no longer exists
+    expect((await post(expense({ confirmOverspend: true }))).status).toBe(400);
     expect((await post(expense({ amount: 0 }))).status).toBe(400);
     expect((await post(expense({ amount: -5 }))).status).toBe(400);
     expect((await post(expense({ category: "made_up" }))).status).toBe(400);
@@ -163,8 +163,10 @@ describe("POST /api/transactions — dates", () => {
 
   it("files a transaction under an earlier day the user picks", async () => {
     const user = await funded();
+    // Last month needs money in the bucket too: Spend gets ₦8,100 of this
+    await seedTx(user.id, { type: "i", amount: 100_000, date: midMonth(-1, undefined, 1) });
     const day = toDateInputValue(midMonth(-1));
-    const res = await post(expense({ date: day, confirmOverspend: true }));
+    const res = await post(expense({ date: day }));
     expect(res.status).toBe(200);
 
     const [row] = await expensesOf(user.id);
@@ -188,82 +190,77 @@ describe("POST /api/transactions — dates", () => {
   });
 });
 
-describe("POST /api/transactions — overspending", () => {
-  it("warns first: the expense is not saved and not refused", async () => {
-    const user = await funded();
-    const res = await post(expense({ amount: 10_000 }));
+describe("POST /api/transactions — a bucket is blocked at zero", () => {
+  const suggestsAnotherBucket =
+    /another|other bucket|different bucket|instead|split|move|transfer|withdraw|choose|pick/i;
 
-    expect(res.status).toBe(409);
+  it("refuses an expense the bucket can not cover, and saves nothing", async () => {
+    const user = await funded();
+    const res = await post(expense({ amount: 10_000, note: "car repair" }));
+
+    expect(res.status).toBe(422);
     const data = await res.json();
-    expect(data.needsConfirmation).toBe(true);
-    expect(data.kind).toBe("overspend");
-    expect(data.overspend).toEqual({
+    expect(data.ok).toBe(false);
+    expect(data.blocked).toBe(true);
+    expect(data.shortfall).toEqual({
       bucketId: "spend",
       bucketName: "Spend",
-      remaining: 8_100,
-      overBy: 1_900,
-      remainingAfter: -1_900,
+      available: 8_100,
+      requested: 10_000,
     });
+    // It says what is available against what was asked for…
     expect(data.error).toBe(
-      "This is ₦1,900 more than the ₦8,100 left in Spend. Saving it puts the bucket ₦1,900 over."
+      "Spend has ₦8,100 available. That does not cover ₦10,000. Nothing was recorded."
     );
+    // …and never points at another bucket
+    expect(suggestsAnotherBucket.test(data.error)).toBe(false);
+
+    expect(await expensesOf(user.id)).toHaveLength(0);
+    expect(await testDb.inboxMessage.count({ where: { userId: user.id } })).toBe(0);
+  });
+
+  it("there is no way to push it through", async () => {
+    const user = await funded();
+    for (const extra of [{ confirmOverspend: true }, { confirm: true }, { force: true }, { override: true }]) {
+      const res = await post(expense({ amount: 10_000, ...extra }));
+      expect([400, 422]).toContain(res.status);
+    }
     expect(await expensesOf(user.id)).toHaveLength(0);
   });
 
-  it("saves it exactly as entered once the user confirms, and records the overspend", async () => {
+  it("allows spending right down to zero, then blocks the next naira", async () => {
     const user = await funded();
-    const res = await post(expense({ amount: 10_000, note: "car repair", confirmOverspend: true }));
-    expect(res.status).toBe(200);
-    expect((await res.json()).overspend).toBe(true);
+    expect((await post(expense({ amount: 8_100 }))).status).toBe(200);
 
-    const [row] = await expensesOf(user.id);
-    expect(row.amount).toBe(10_000); // never trimmed to fit the bucket
-    expect(row.bucketId).toBe("spend"); // never moved to another bucket
-    expect(row.overspend).toBe(true);
-
-    // Accountability: one Inbox note, linked to the transaction
-    const notes = await testDb.inboxMessage.findMany({ where: { userId: user.id } });
-    expect(notes).toHaveLength(1);
-    expect(notes[0].kind).toBe("overspend");
-    expect(notes[0].relatedTxId).toBe(row.id);
-    expect(notes[0].title).toBe("Overspent: Spend");
-    expect(notes[0].body).toContain("₦10,000");
-    expect(notes[0].body).toContain("₦1,900 over");
+    const next = await post(expense({ amount: 1 }));
+    expect(next.status).toBe(422);
+    expect((await next.json()).error).toBe(
+      "Spend has nothing available. That does not cover ₦1. Nothing was recorded."
+    );
+    expect(await expensesOf(user.id)).toHaveLength(1);
   });
 
-  it("can record spending from a bucket with nothing in it (no income logged yet)", async () => {
+  it("blocks spending from a bucket that has received nothing yet", async () => {
     const user = await createUser();
     await seedPlan(user.id);
     signIn(user);
 
-    const warned = await post(expense({ amount: 500 }));
-    expect(warned.status).toBe(409);
-    expect((await warned.json()).error).toBe(
-      "Spend has nothing left. Saving this puts it ₦500 over."
-    );
-
-    const saved = await post(expense({ amount: 500, confirmOverspend: true }));
-    expect(saved.status).toBe(200);
-    const [row] = await expensesOf(user.id);
-    expect(row.amount).toBe(500);
-    expect(row.overspend).toBe(true);
-  });
-
-  it("does not mark an expense overspent just because the client said confirm", async () => {
-    const user = await funded();
-    const res = await post(expense({ amount: 100, confirmOverspend: true }));
-    expect(res.status).toBe(200);
-    const [row] = await expensesOf(user.id);
-    expect(row.overspend).toBe(false);
-    expect(await testDb.inboxMessage.count({ where: { userId: user.id } })).toBe(0);
+    const res = await post(expense({ amount: 500 }));
+    expect(res.status).toBe(422);
+    const data = await res.json();
+    expect(data.shortfall.available).toBe(0);
+    expect(suggestsAnotherBucket.test(data.error)).toBe(false);
+    expect(await expensesOf(user.id)).toHaveLength(0);
   });
 
   it("checks in the user's base currency", async () => {
     const user = await funded();
-    // $10 at 1,580 = ₦15,800 against ₦8,100 left in Spend
+    // $10 at 1,580 = ₦15,800 against ₦8,100 available in Spend
     const res = await post(expense({ amount: 10, currency: "USD" }));
-    expect(res.status).toBe(409);
-    expect((await res.json()).overspend.overBy).toBe(7_700);
+    expect(res.status).toBe(422);
+    const data = await res.json();
+    expect(data.shortfall.requested).toBe(15_800);
+    expect(data.error).toContain("₦15,800");
     expect(await expensesOf(user.id)).toHaveLength(0);
   });
 
@@ -279,22 +276,42 @@ describe("POST /api/transactions — overspending", () => {
     expect(fits.status).toBe(200);
 
     const over = await post(expense({ amount: 500, bucketId: "tithe", category: "tithe_payment" }));
-    expect(over.status).toBe(409);
-    expect((await over.json()).overspend.remaining).toBe(400);
+    expect(over.status).toBe(422);
+    expect((await over.json()).shortfall.available).toBe(400);
   });
 
-  it("checks a past-dated expense against that month's balance", async () => {
+  it("checks a past-dated expense against what the bucket had on that date", async () => {
     const user = await createUser();
     await seedPlan(user.id);
-    await seedTx(user.id, { type: "i", amount: 34_000, date: midMonth(-1) }); // Spend last month: 2,754
+    await seedTx(user.id, { type: "i", amount: 34_000, date: midMonth(-1, undefined, 1) }); // Spend last month: 2,754
     await seedTx(user.id, { type: "i", amount: 100_000 }); // Spend this month: 8,100
     signIn(user);
 
     const lastMonth = await post(expense({ amount: 3_000, date: toDateInputValue(midMonth(-1)) }));
-    expect(lastMonth.status).toBe(409);
-    expect((await lastMonth.json()).overspend.remaining).toBe(2_754);
+    expect(lastMonth.status).toBe(422);
+    const data = await lastMonth.json();
+    expect(data.shortfall.available).toBe(2_754);
+    expect(data.error).toBe(
+      "Spend has ₦2,754 available for that date. That does not cover ₦3,000. Nothing was recorded."
+    );
 
     const thisMonth = await post(expense({ amount: 3_000 }));
     expect(thisMonth.status).toBe(200);
+  });
+
+  it("a past-dated expense can not empty a carry-over bucket that was spent since", async () => {
+    const user = await createUser();
+    await seedPlan(user.id);
+    // Last month Tithe had ₦1,000 left; it carried over and was spent this month.
+    await seedTx(user.id, { type: "i", amount: 34_000, date: midMonth(-1, undefined, 1) });
+    await seedTx(user.id, { type: "e", amount: 2_400, date: midMonth(-1, undefined, 2), bucketId: "tithe" });
+    await seedTx(user.id, { type: "e", amount: 1_000, bucketId: "tithe" });
+    signIn(user);
+
+    const res = await post(
+      expense({ amount: 500, bucketId: "tithe", category: "tithe_payment", date: toDateInputValue(midMonth(-1)) })
+    );
+    expect(res.status).toBe(422);
+    expect((await res.json()).shortfall.available).toBe(0);
   });
 });

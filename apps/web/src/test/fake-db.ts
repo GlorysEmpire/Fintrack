@@ -362,7 +362,6 @@ export class FakeDb {
       note: null,
       override: false,
       reason: null,
-      overspend: false,
       recurringRuleId: null,
       date: new Date(),
       createdAt: new Date(),

@@ -95,7 +95,6 @@ export async function seedTx(
     currency?: string;
     note?: string;
     sourceId?: string;
-    overspend?: boolean;
     override?: boolean;
   }
 ): Promise<Transaction> {
@@ -111,9 +110,9 @@ export async function transactionsOf(userId: string) {
   return JSON.parse(JSON.stringify(rows)) as Record<string, unknown>[];
 }
 
-/** The 15th of a month relative to now (0 = this month, -1 = last month) */
-export function midMonth(offset: number, now: Date = new Date()): Date {
-  return new Date(now.getFullYear(), now.getMonth() + offset, 15, 12, 0, 0);
+/** A day (the 15th by default) of a month relative to now: 0 = this month, -1 = last month */
+export function midMonth(offset: number, now: Date = new Date(), day = 15): Date {
+  return new Date(now.getFullYear(), now.getMonth() + offset, day, 12, 0, 0);
 }
 
 export const HOUR = 60 * 60 * 1000;

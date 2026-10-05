@@ -104,31 +104,3 @@ export function overrideInboxDraft(opts: {
     body: `You spent ${opts.amountLabel} from ${opts.bucketName} beyond the plan (remaining was ${opts.remainingLabel}).\n\nYour reason: “${opts.reason}”\n\nReflect: Was this a one-time stewardship choice, or lifestyle creep? If it becomes a pattern, adjust the plan in Settings so the plan matches reality — truth over vibes.\n\n— FinTrack Steward`,
   };
 }
-
-/**
- * Inbox note written when the user confirms an expense that is more than the
- * bucket holds. The expense is always saved (it happened); this is the
- * accountability record of it. Firm, never shaming.
- */
-export function overspendInboxDraft(opts: {
-  bucketName: string;
-  amountLabel: string;
-  /** What the bucket could cover before this expense */
-  availableLabel: string;
-  /** How far over the bucket is now */
-  overByLabel: string;
-  /** The user's own note, if they wrote one */
-  reason?: string | null;
-}): { title: string; body: string } {
-  const reason = opts.reason?.trim();
-  return {
-    title: `Overspent: ${opts.bucketName}`,
-    body: [
-      `You recorded ${opts.amountLabel} from ${opts.bucketName} when ${opts.availableLabel} was left, so the bucket is now ${opts.overByLabel} over.`,
-      `FinTrack saved it because it happened. Nothing else was changed.`,
-      ...(reason ? [`Your note: “${reason}”`] : []),
-      `Reflect: was this a one-off, or is ${opts.bucketName} too small for real life? If it keeps happening, adjust the plan so it matches reality — truth over vibes.`,
-      `— FinTrack Steward`,
-    ].join("\n\n"),
-  };
-}

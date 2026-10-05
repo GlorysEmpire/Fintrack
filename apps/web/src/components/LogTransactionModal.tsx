@@ -4,8 +4,9 @@
  * Log income or expense — or edit one that is still inside its edit window.
  *
  * Expense default. Category → bucket rules; cross-bucket needs Note.
- * Spending more than a bucket holds is never blocked: the server explains the
- * overspend, the user confirms, and it is saved as it happened.
+ * A bucket is blocked at zero: an expense that is more than its bucket has
+ * available is not saved. The form says what is available against what was
+ * asked for, and never suggests taking the money from another bucket.
  */
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -15,6 +16,7 @@ import {
   activeBuckets,
   allocateWaterfall,
   amountInBase,
+  BUCKET_LIMIT_RULE,
   EDIT_WINDOW_RULE,
   editWindowRemainingLabel,
   EXPENSE_CATEGORIES,
@@ -26,7 +28,7 @@ import {
   type BudgetPlan,
   type CurrencyCode,
 } from "@fintrack/domain";
-import { formatDay, formatMonthYear, toDateInputValue } from "@/lib/format-date";
+import { formatDay, toDateInputValue } from "@/lib/format-date";
 import type { TxRow } from "@/lib/tx-row";
 import { toast } from "@/components/ui/toast";
 
@@ -50,14 +52,6 @@ type Props = {
   monthIncome?: number;
   /** Set to edit this transaction instead of logging a new one */
   editing?: TxRow | null;
-};
-
-/** What the server says when an expense is more than the bucket holds */
-type OverspendWarning = {
-  message: string;
-  bucketName: string;
-  overBy: number;
-  remainingAfter: number;
 };
 
 const CURRENCIES: CurrencyCode[] = ["NGN", "USD", "GBP", "EUR"];
@@ -88,8 +82,6 @@ export function LogTransactionModal({
   const [todayKey, setTodayKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  /** Set while the user is being asked to confirm an overspend */
-  const [overspend, setOverspend] = useState<OverspendWarning | null>(null);
 
   // Active buckets in the order the plan fills them. When editing a
   // transaction whose bucket has since been archived, keep that one selectable.
@@ -107,7 +99,6 @@ export function LogTransactionModal({
     const today = toDateInputValue(new Date());
     setTodayKey(today);
     setError(null);
-    setOverspend(null);
 
     if (editing) {
       setType(editing.type === "i" ? "i" : "e");
@@ -161,11 +152,29 @@ export function LogTransactionModal({
     type === "e" && bucketId && category
       ? isCrossBucket(bucketId, category)
       : false;
+  /** More than the bucket has available: this expense will not be saved */
   const overBalance =
     type === "e" &&
     amtNum > 0 &&
     remaining !== undefined &&
     amountBase > remaining + 0.005;
+  // An edit that only lowers the amount (same bucket, same month) is always
+  // allowed, even if the bucket is already below zero for another reason.
+  const onlyLowers =
+    Boolean(editing) &&
+    editing!.type === "e" &&
+    editing!.bucketId === bucketId &&
+    toDateInputValue(editing!.date).slice(0, 7) === dateKey.slice(0, 7) &&
+    amountBase <=
+      amountInBase(editing!.amount, editing!.currency, baseCurrency, fx) + 0.005;
+  const blockedHere = overBalance && !onlyLowers;
+  /** What the bucket has available against what was asked for. Never suggests another bucket. */
+  const shortfallText =
+    blockedHere && selectedBucket
+      ? remaining !== undefined && remaining > 0.005
+        ? `${selectedBucket.name} has ${formatMoney(remaining, base)} available. That does not cover ${formatMoney(amountBase, base)}.`
+        : `${selectedBucket.name} has nothing available. That does not cover ${formatMoney(amountBase, base)}.`
+      : "";
 
   // What this income adds to each bucket: the plan is applied to the month's
   // total income, so the preview is (month with this income) − (month without).
@@ -198,7 +207,7 @@ export function LogTransactionModal({
 
   const editWindow = editing ? transactionLockState(editing.createdAt) : null;
 
-  async function save(confirmOverspend = false) {
+  async function save() {
     setError(null);
     setLoading(true);
     try {
@@ -206,6 +215,13 @@ export function LogTransactionModal({
 
       if (type === "e" && plan && !bucketId) {
         throw new Error("Pick a bucket for this expense.");
+      }
+
+      // Blocked at zero. The server checks this again (and for other months).
+      if (blockedHere) {
+        throw new Error(
+          `${shortfallText} ${isEdit ? "Nothing was changed." : "Nothing was recorded."}`
+        );
       }
 
       if (type === "e" && cross && !note.trim()) {
@@ -238,8 +254,6 @@ export function LogTransactionModal({
         payload.bucketId = bucketId || null;
         payload.category = category || null;
         payload.reason = cross ? note.trim() : null;
-        // Only ever sent after the user has read the warning and agreed
-        if (confirmOverspend) payload.confirmOverspend = true;
       }
 
       const res = await fetch(
@@ -252,30 +266,12 @@ export function LogTransactionModal({
       );
       const data = await res.json();
 
-      // More than the bucket holds: explain, and let the user decide.
-      if (res.status === 409 && data.needsConfirmation && data.overspend) {
-        setOverspend({
-          message: data.error,
-          bucketName: data.overspend.bucketName,
-          overBy: data.overspend.overBy,
-          remainingAfter: data.overspend.remainingAfter,
-        });
-        return;
-      }
-
       if (!data.ok) throw new Error(data.error || "Failed to save");
 
       onClose();
-      toast(
-        data.overspend
-          ? "Saved. This bucket is now overspent."
-          : isEdit
-            ? "Changes saved"
-            : "Transaction saved"
-      );
+      toast(isEdit ? "Changes saved" : "Transaction saved");
       router.refresh();
     } catch (e) {
-      setOverspend(null);
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
       setLoading(false);
@@ -304,58 +300,7 @@ export function LogTransactionModal({
       }}
     >
       <div className="modal glass-card">
-        {overspend ? (
-          <>
-            <h2 id="log-tx-title">This is more than {overspend.bucketName} holds</h2>
-            <div className="friction hard" role="alert">
-              <strong>{overspend.message}</strong>
-            </div>
-            {!inCurrentMonth && dateKey && (
-              <p className="muted" style={{ marginTop: 8 }}>
-                Checked against {overspend.bucketName}&apos;s balance for{" "}
-                {formatMonthYear(`${dateKey}T12:00:00.000Z`)}, the month you
-                filed this under.
-              </p>
-            )}
-            <div className="confirm-points">
-              <p>
-                <strong>What happens if you save it:</strong>
-              </p>
-              <ul>
-                <li>
-                  It is recorded exactly as you entered it, because it happened.
-                  FinTrack never changes an amount to make a bucket fit.
-                </li>
-                <li>
-                  {overspend.bucketName} will show{" "}
-                  <strong>
-                    {formatMoney(Math.max(0, -overspend.remainingAfter), base)} over
-                  </strong>
-                  , and the transaction is marked <em>overspent</em>.
-                </li>
-                <li>A note about it goes to your Inbox. Nothing else is changed.</li>
-              </ul>
-            </div>
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={loading}
-              onClick={() => save(true)}
-              style={{ marginTop: 16 }}
-            >
-              {loading ? "Saving…" : "Yes, record it"}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={loading}
-              onClick={() => setOverspend(null)}
-            >
-              Go back and change it
-            </button>
-          </>
-        ) : (
-          <>
+        <>
             <h2 id="log-tx-title">{title}</h2>
 
             {isEdit ? (
@@ -556,8 +501,8 @@ export function LogTransactionModal({
                         {b.archived ? " (archived)" : ""}
                         {!b.archived && inCurrentMonth && bucketRemaining[b.id] !== undefined
                           ? bucketRemaining[b.id] < -0.005
-                            ? ` · ${formatMoney(-bucketRemaining[b.id], base)} over`
-                            : ` · ${formatMoney(Math.max(0, bucketRemaining[b.id]), base)} left`
+                            ? ` · ${formatMoney(-bucketRemaining[b.id], base)} below zero`
+                            : ` · ${formatMoney(Math.max(0, bucketRemaining[b.id]), base)} available`
                           : ""}
                       </option>
                     ))}
@@ -599,17 +544,13 @@ export function LogTransactionModal({
                       borderRadius: 8,
                       fontSize: 12,
                       lineHeight: 1.55,
-                      background: cross
-                        ? "var(--rdim)"
-                        : overBalance
-                          ? "var(--ydim)"
-                          : "var(--gdim)",
-                      border: cross
-                        ? "1px solid color-mix(in oklch, var(--r) 40%, transparent)"
-                        : overBalance
-                          ? "1px solid color-mix(in oklch, var(--y) 45%, transparent)"
+                      background:
+                        cross || blockedHere ? "var(--rdim)" : "var(--gdim)",
+                      border:
+                        cross || blockedHere
+                          ? "1px solid color-mix(in oklch, var(--r) 40%, transparent)"
                           : "1px solid var(--g)",
-                      color: cross ? "var(--r)" : overBalance ? "var(--y)" : "var(--g)",
+                      color: cross || blockedHere ? "var(--r)" : "var(--g)",
                     }}
                   >
                     {cross ? (
@@ -626,14 +567,9 @@ export function LogTransactionModal({
                         )}
                         <strong>Write a reason in the Note field to save.</strong>
                       </>
-                    ) : overBalance ? (
+                    ) : blockedHere ? (
                       <>
-                        <strong>More than this bucket holds.</strong>{" "}
-                        {remaining !== undefined && remaining <= 0.005
-                          ? `${selectedBucket.name} has nothing left this month.`
-                          : `Only ${formatMoney(Math.max(0, remaining || 0), base)} is left in ${selectedBucket.name}.`}{" "}
-                        You can still record it: FinTrack will explain the
-                        overspend and ask you to confirm.
+                        <strong>{shortfallText}</strong> {BUCKET_LIMIT_RULE}
                       </>
                     ) : (
                       <>
@@ -651,8 +587,8 @@ export function LogTransactionModal({
                         {!inCurrentMonth && (
                           <>
                             <br />
-                            This is checked against the bucket&apos;s balance in
-                            the month you picked when you save.
+                            When you save, this is checked against what the
+                            bucket had available on the date you picked.
                           </>
                         )}
                       </>
@@ -711,8 +647,7 @@ export function LogTransactionModal({
             <button type="button" className="btn btn-ghost" onClick={onClose}>
               Cancel
             </button>
-          </>
-        )}
+        </>
       </div>
     </div>,
     document.body

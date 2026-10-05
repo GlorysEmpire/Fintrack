@@ -3,10 +3,10 @@
  *
  * Product rules enforced here, on the server, whatever a client sends:
  *
- *  - Reality is always recordable. An expense that is more than its bucket
- *    holds is never refused and never trimmed to fit. It is saved once the
- *    user has been warned and has confirmed (confirmOverspend), flagged as an
- *    overspend, and noted in the Inbox.
+ *  - A bucket is blocked at zero. An expense that is more than its bucket has
+ *    available is refused and nothing is saved. The user is told what is
+ *    available against what they asked for, and is never pointed at another
+ *    bucket: that would defeat the discipline the buckets exist for.
  *  - A transaction can be filed under today or an earlier day, never a later one.
  *  - Created → Editable window → Locked. A transaction can be edited or
  *    deleted for a fixed time after it was recorded (createdAt, which only
@@ -17,11 +17,13 @@ import type { Transaction } from "@prisma/client";
 import {
   EXPENSE_CATEGORIES,
   LOCKED_EXPLANATION,
+  MONEY_EPSILON,
   amountInBase,
   dateKeyInTimeZone,
   expenseFriction,
   formatMoney,
   isCrossBucket,
+  monthKeyOf,
   resolveTransactionDate,
   transactionLockState,
   type CurrencyCode,
@@ -30,10 +32,7 @@ import {
 } from "@fintrack/domain";
 import { prisma } from "./db";
 import { APP_TIME_ZONE } from "./format-date";
-import {
-  createOverrideInboxMessage,
-  createOverspendInboxMessage,
-} from "./inbox";
+import { createOverrideInboxMessage } from "./inbox";
 import { parseFx } from "./money";
 import { getUserPlan } from "./plan";
 
@@ -54,35 +53,25 @@ export type NewTransactionInput = {
   reason?: string | null;
   /** "YYYY-MM-DD" in the app's time zone. Omitted = now. */
   date?: string | null;
-  /** Set only after the user has seen the overspend warning and agreed */
-  confirmOverspend?: boolean;
 };
 
 /** Fields that may change while a transaction is still editable. The type may not. */
-export type TransactionPatch = Partial<
-  Omit<NewTransactionInput, "type" | "confirmOverspend">
-> & { confirmOverspend?: boolean };
+export type TransactionPatch = Partial<Omit<NewTransactionInput, "type">>;
 
-export type OverspendWarning = {
+/** Why an expense was refused: the bucket does not hold enough */
+export type BucketShortfall = {
   bucketId: string;
   bucketName: string;
-  /** What the bucket could cover before this expense (base currency) */
-  remaining: number;
-  /** How much of the expense it can not cover */
-  overBy: number;
-  /** The bucket's balance if the expense is saved */
-  remainingAfter: number;
+  /** What the bucket has available for that date (base currency, never below 0) */
+  available: number;
+  /** What the expense asked for (base currency) */
+  requested: number;
 };
 
 export type TransactionResult =
-  | {
-      status: "ok";
-      transaction: Transaction;
-      overspend: boolean;
-      crossBucket: boolean;
-    }
+  | { status: "ok"; transaction: Transaction; crossBucket: boolean }
   | { status: "invalid"; error: string; crossBucket?: boolean }
-  | { status: "needs_confirmation"; message: string; overspend: OverspendWarning }
+  | { status: "blocked"; error: string; shortfall: BucketShortfall }
   | { status: "locked"; error: string; editableUntil: string }
   | { status: "not_found" };
 
@@ -160,7 +149,6 @@ async function checkExpense(
     date: Date;
   },
   opts: {
-    confirmOverspend: boolean;
     now: Date;
     previous?: Transaction;
     /** false when an edit left amount, currency, bucket and day alone */
@@ -198,7 +186,7 @@ async function checkExpense(
       ok: false,
       result: invalid(
         bucket?.archived
-          ? `${bucket.name} is archived, so new spending can not be recorded against it. Pick an active bucket.`
+          ? `${bucket.name} is archived, so new spending can not be recorded against it.`
           : "Pick one of the buckets in your plan."
       ),
     };
@@ -217,10 +205,16 @@ async function checkExpense(
   }
 
   let friction: ExpenseFriction | null = null;
-  if (opts.moneyChanged && !bucket.archived) {
+  if (opts.moneyChanged) {
     const fx = parseFx(user.fxRates);
+    const amountBase = amountInBase(
+      want.amount,
+      want.currency,
+      user.baseCurrency,
+      fx
+    );
     friction = expenseFriction({
-      amountBase: amountInBase(want.amount, want.currency, user.baseCurrency, fx),
+      amountBase,
       bucketId: want.bucketId,
       plan,
       txs: await loadHistory(user.id, previous?.id),
@@ -230,19 +224,33 @@ async function checkExpense(
       now: opts.now,
     });
 
-    // Warn → explain → confirm. Never a refusal.
-    if (friction.requiresConfirmation && !opts.confirmOverspend) {
+    // An edit that only lowers the amount (same bucket, same month) takes less
+    // from the bucket than before, so it is always allowed, even when the
+    // bucket is already below zero for another reason.
+    const onlyLowers =
+      previous !== undefined &&
+      keepsOldBucket &&
+      monthKeyOf(previous.date) === monthKeyOf(want.date) &&
+      amountBase <=
+        amountInBase(previous.amount, previous.currency, user.baseCurrency, fx) +
+          MONEY_EPSILON;
+
+    // Blocked at zero: the bucket does not hold what was asked for.
+    if (friction.blocked && !onlyLowers) {
       return {
         ok: false,
         result: {
-          status: "needs_confirmation",
-          message: friction.message,
-          overspend: {
+          status: "blocked",
+          // The domain sentence names an active bucket; an archived one (only
+          // reachable when editing) is named here.
+          error: `${friction.message.replace(/^This bucket/, bucket.name)} ${
+            previous ? "Nothing was changed." : "Nothing was recorded."
+          }`,
+          shortfall: {
             bucketId: bucket.id,
             bucketName: bucket.name,
-            remaining: friction.remaining,
-            overBy: friction.overBy,
-            remainingAfter: friction.remainingAfter,
+            available: Math.max(0, friction.remaining),
+            requested: amountBase,
           },
         },
       };
@@ -261,41 +269,26 @@ async function checkExpense(
   };
 }
 
-/** Inbox accountability for an expense that was just saved. One note at most. */
-async function writeAccountabilityNote(
+/** Inbox accountability for a cross-bucket spend that was just saved. */
+async function writeOverrideNote(
   user: SessionUser,
   tx: Transaction,
   check: Extract<ExpenseCheck, { ok: true }>,
-  was: { overspend: boolean; override: boolean }
+  wasOverride: boolean
 ) {
+  if (!tx.override || wasOverride) return;
   const base = user.baseCurrency as CurrencyCode;
-  const amountLabel = formatMoney(tx.amount, tx.currency as CurrencyCode);
-
-  if (tx.overspend && !was.overspend && check.friction) {
-    await createOverspendInboxMessage({
-      userId: user.id,
-      txId: tx.id,
-      bucketName: check.bucketName,
-      amountLabel,
-      availableLabel: formatMoney(Math.max(0, check.friction.remaining), base),
-      overByLabel: formatMoney(Math.max(0, -check.friction.remainingAfter), base),
-      reason: check.reason || check.note,
-    });
-    return;
-  }
-  if (tx.override && !was.override) {
-    await createOverrideInboxMessage({
-      userId: user.id,
-      txId: tx.id,
-      bucketName: check.bucketName,
-      amountLabel,
-      reason: check.reason || check.note,
-      remainingLabel: formatMoney(
-        Math.max(0, check.friction?.remaining ?? 0),
-        base
-      ),
-    });
-  }
+  await createOverrideInboxMessage({
+    userId: user.id,
+    txId: tx.id,
+    bucketName: check.bucketName,
+    amountLabel: formatMoney(tx.amount, tx.currency as CurrencyCode),
+    reason: check.reason || check.note,
+    remainingLabel: formatMoney(
+      Math.max(0, check.friction?.remaining ?? 0),
+      base
+    ),
+  });
 }
 
 export async function createTransaction(
@@ -327,7 +320,7 @@ export async function createTransaction(
         date: when.date,
       },
     });
-    return { status: "ok", transaction, overspend: false, crossBucket: false };
+    return { status: "ok", transaction, crossBucket: false };
   }
 
   const check = await checkExpense(
@@ -341,11 +334,10 @@ export async function createTransaction(
       reason: clean(input.reason),
       date: when.date,
     },
-    { confirmOverspend: Boolean(input.confirmOverspend), now, moneyChanged: true }
+    { now, moneyChanged: true }
   );
   if (!check.ok) return check.result;
 
-  const overspend = Boolean(check.friction?.wouldOverspend);
   const transaction = await prisma.transaction.create({
     data: {
       userId: user.id,
@@ -357,16 +349,12 @@ export async function createTransaction(
       note: check.note || null,
       reason: check.reason || null,
       override: check.cross,
-      overspend,
       date: when.date,
     },
   });
 
-  await writeAccountabilityNote(user, transaction, check, {
-    overspend: false,
-    override: false,
-  });
-  return { status: "ok", transaction, overspend, crossBucket: check.cross };
+  await writeOverrideNote(user, transaction, check, false);
+  return { status: "ok", transaction, crossBucket: check.cross };
 }
 
 export async function updateTransaction(
@@ -423,7 +411,7 @@ export async function updateTransaction(
       where: { id: existing.id, userId: user.id },
       data: { amount, currency, sourceId, note: note || null, date },
     });
-    return { status: "ok", transaction, overspend: false, crossBucket: false };
+    return { status: "ok", transaction, crossBucket: false };
   }
 
   const bucketId =
@@ -441,19 +429,10 @@ export async function updateTransaction(
   const check = await checkExpense(
     user,
     { amount, currency, bucketId, category, note, reason, date },
-    {
-      confirmOverspend: Boolean(patch.confirmOverspend),
-      now,
-      previous: existing,
-      moneyChanged,
-    }
+    { now, previous: existing, moneyChanged }
   );
   if (!check.ok) return check.result;
 
-  // Money side untouched → the overspend flag stays as it was recorded.
-  const overspend = check.friction
-    ? check.friction.wouldOverspend
-    : existing.overspend;
   const transaction = await prisma.transaction.update({
     where: { id: existing.id, userId: user.id },
     data: {
@@ -464,16 +443,12 @@ export async function updateTransaction(
       note: check.note || null,
       reason: check.reason || null,
       override: check.cross,
-      overspend,
       date,
     },
   });
 
-  await writeAccountabilityNote(user, transaction, check, {
-    overspend: existing.overspend,
-    override: existing.override,
-  });
-  return { status: "ok", transaction, overspend, crossBucket: check.cross };
+  await writeOverrideNote(user, transaction, check, existing.override);
+  return { status: "ok", transaction, crossBucket: check.cross };
 }
 
 export async function deleteTransaction(

@@ -827,6 +827,9 @@ function ImpactDetails({
     impact.transactionCount === 1 ? "transaction" : "transactions"
   }`;
   const anyBalanceChanges = impact.buckets.some(balanceChanged);
+  const belowZero = impact.buckets.filter(
+    (b) => b.after !== null && b.after < -0.005
+  );
 
   return (
     <>
@@ -879,6 +882,17 @@ function ImpactDetails({
         <p className="muted">
           Today&apos;s balances stay the same, but earlier months are still
           recalculated under the new rules.
+        </p>
+      )}
+      {belowZero.length > 0 && (
+        <p>
+          <strong>
+            {belowZero.map((b) => b.name).join(", ")} would be below zero.
+          </strong>{" "}
+          More has already been spent from{" "}
+          {belowZero.length === 1 ? "it" : "them"} than the new plan gives{" "}
+          {belowZero.length === 1 ? "it" : "them"}. Nothing more can be spent
+          from a bucket while it is below zero.
         </p>
       )}
 

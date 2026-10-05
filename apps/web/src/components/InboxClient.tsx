@@ -85,7 +85,7 @@ export function InboxClient({
           <EmptyState
             icon={Inbox}
             title="Inbox is clear"
-            description="When you confirm an overspend, Steward writes you here."
+            description="When you spend from a bucket on something outside its purpose, Steward writes you here."
           />
         </div>
       ) : (

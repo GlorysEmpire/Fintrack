@@ -55,10 +55,12 @@ export function monthBucketStates(
 /**
  * From this month's closing balances, what opens next month?
  *
- * Only money that is left carries over. A bucket that ends the month overspent
- * (closing below zero) opens the next month at zero: the shortfall is not
- * carried forward. That is the current product rule; changing it is a product
- * decision, not a refactor.
+ * Only money that is left carries over. A bucket that ends the month below zero
+ * opens the next month at zero: the shortfall is not carried forward.
+ *
+ * A new expense is never accepted past a bucket's balance (expenseFriction), so
+ * a bucket can only end a month below zero when history is recalculated, for
+ * example after a plan change or a corrected income.
  */
 export function nextOpeningBalances(
   states: MonthBucketState[]
