@@ -1,6 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { expenseFriction, monthSnapshot } from "./money";
+import {
+  daysLeftInMonth,
+  expenseFriction,
+  filterMonthTxs,
+  monthKeyOf,
+  monthSnapshot,
+  openingBalancesForMonth,
+  startOfMonth,
+  startOfMonthOffset,
+} from "./money";
 import { TITHE_FIRST_TEMPLATE } from "./templates";
 
 const fx = { NGN: 1, USD: 1580, GBP: 1990, EUR: 1710 };
@@ -60,5 +69,57 @@ describe("expenseFriction", () => {
     assert.equal(f.wouldOverspend, true);
     assert.equal(f.blocked, true);
     assert.equal(f.overBy, 41_900);
+  });
+});
+
+// Months follow Lagos (UTC+1), never the machine running the code. These
+// instants are chosen so a server in UTC and a laptop in Lagos disagree if the
+// code uses the machine's clock.
+describe("calendar months are Lagos months", () => {
+  const lastHourOfSeptemberUtc = new Date("2026-09-30T23:30:00Z"); // 00:30 on 1 Oct in Lagos
+  const firstHourOfOctoberUtc = new Date("2026-10-01T00:30:00Z");
+
+  it("files 23:30 UTC on the last day under the next month", () => {
+    assert.equal(monthKeyOf(lastHourOfSeptemberUtc), "2026-10");
+    assert.equal(monthKeyOf(new Date("2026-09-30T22:59:00Z")), "2026-09");
+    assert.equal(monthKeyOf(firstHourOfOctoberUtc), "2026-10");
+  });
+
+  it("starts a month at midnight Lagos, which is 23:00 UTC the day before", () => {
+    assert.equal(
+      startOfMonth(new Date("2026-10-15T12:00:00Z")).toISOString(),
+      "2026-09-30T23:00:00.000Z"
+    );
+    assert.equal(
+      startOfMonthOffset(-1, new Date("2026-01-10T12:00:00Z")).toISOString(),
+      "2025-11-30T23:00:00.000Z"
+    );
+  });
+
+  it("filterMonthTxs keeps a transaction made just after Lagos midnight", () => {
+    const tx = { type: "e" as const, amount: 1, currency: "NGN", date: lastHourOfSeptemberUtc };
+    assert.equal(filterMonthTxs([tx], new Date("2026-10-15T12:00:00Z")).length, 1);
+    const beforeLagosMidnight = { ...tx, date: new Date("2026-09-30T22:30:00Z") };
+    assert.equal(filterMonthTxs([beforeLagosMidnight], new Date("2026-10-15T12:00:00Z")).length, 0);
+  });
+
+  it("counts days left from the Lagos date", () => {
+    // 31 Oct 23:30 UTC is already 1 Nov in Lagos: 29 days left in November
+    assert.equal(daysLeftInMonth(new Date("2026-10-31T23:30:00Z")), 29);
+    assert.equal(daysLeftInMonth(new Date("2026-10-31T12:00:00Z")), 0);
+  });
+
+  it("carries September's leftover into a transaction-free October", () => {
+    const carryPlan = {
+      id: "p",
+      name: "x",
+      emergencyCarryOverDefault: true,
+      buckets: [
+        { id: "save", name: "Save", emoji: "s", percent: 100, mode: "of_gross" as const, carryOver: true, order: 1, layer: "life_plan" as const },
+      ],
+    };
+    const income = { type: "i" as const, amount: 1000, currency: "NGN", date: new Date("2026-09-10T12:00:00Z") };
+    const openings = openingBalancesForMonth([income], carryPlan, "NGN", fx, new Date("2026-10-05T12:00:00Z"));
+    assert.equal(openings.save, 1000);
   });
 });

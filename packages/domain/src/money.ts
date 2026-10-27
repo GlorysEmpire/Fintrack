@@ -22,9 +22,39 @@ export interface MoneyTx {
   date: Date | string;
 }
 
-/** First moment of the current calendar month (local browser/server time) */
-export function startOfMonth(d = new Date()): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+/**
+ * The one time zone FinTrack judges "today" and "this month" by.
+ * Lagos is UTC+1 all year (no daylight saving), so a fixed offset is exact.
+ * Months must never follow the server's own clock: Vercel runs in UTC, and a
+ * transaction recorded at 23:30 UTC on the 31st is already the 1st in Lagos.
+ */
+export const APP_TIME_ZONE = "Africa/Lagos";
+const APP_UTC_OFFSET_MS = 60 * 60 * 1000;
+
+/** Calendar year and month (0-11) of an instant, in the app's time zone */
+function appYearMonth(d: Date): { y: number; m: number } {
+  const shifted = new Date(d.getTime() + APP_UTC_OFFSET_MS);
+  return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth() };
+}
+
+/** First moment of the calendar month `offset` months from `d`'s (0 = same month), in the app's time zone */
+export function startOfMonthOffset(offset: number, d: Date = new Date()): Date {
+  const { y, m } = appYearMonth(d);
+  return new Date(Date.UTC(y, m + offset, 1) - APP_UTC_OFFSET_MS);
+}
+
+/** First moment of the calendar month containing `d`, in the app's time zone */
+export function startOfMonth(d: Date = new Date()): Date {
+  return startOfMonthOffset(0, d);
+}
+
+/** Whole days left in the month after today's date, in the app's time zone */
+export function daysLeftInMonth(now: Date = new Date()): number {
+  const shifted = new Date(now.getTime() + APP_UTC_OFFSET_MS);
+  const lastDay = new Date(
+    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  return Math.max(0, lastDay - shifted.getUTCDate());
 }
 
 export function isInCurrentMonth(date: Date | string, now = new Date()): boolean {
@@ -105,10 +135,11 @@ export function transactionTotals(
   return { income, expenses, net: income - expenses };
 }
 
-/** Calendar-month key in local time: July 2026 → "2026-07" */
+/** Calendar-month key in the app's time zone: July 2026 → "2026-07" */
 export function monthKeyOf(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const { y, m } = appYearMonth(d);
+  return `${y}-${String(m + 1).padStart(2, "0")}`;
 }
 
 /** Transactions dated in the same calendar month as `month` */
@@ -192,7 +223,7 @@ export function openingBalancesForMonth(
   month: Date = new Date()
 ): Record<string, number> {
   if (!plan) return {};
-  const prev = new Date(month.getFullYear(), month.getMonth() - 1, 1);
+  const prev = startOfMonthOffset(-1, month);
   return replayMonths(txs, plan, base, fx, monthKeyOf(prev)).openings;
 }
 

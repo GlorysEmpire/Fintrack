@@ -7,7 +7,7 @@
 import type { BudgetPlan, WaterfallLine, WaterfallResult } from "./types";
 import { allocateWaterfall } from "./waterfall";
 import type { MoneyTx } from "./money";
-import { amountInBase } from "./money";
+import { amountInBase, startOfMonthOffset } from "./money";
 export type RecurringCadence = "daily" | "weekly" | "monthly";
 
 /** Minimal recurring rule shape for projection (income-like additions). */
@@ -52,7 +52,7 @@ export function expectedMonthlyGross(opts: {
 }): number {
   const lookback = opts.lookbackMonths ?? 3;
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - lookback, 1);
+  const start = startOfMonthOffset(-lookback, now);
   const incomes = opts.history.filter((t) => {
     if (t.type !== "i") return false;
     const d = typeof t.date === "string" ? new Date(t.date) : t.date;

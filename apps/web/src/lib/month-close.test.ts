@@ -116,7 +116,7 @@ describe("ensureMonthPacked", () => {
     );
     await ensureMonthPacked("user1", OCT_NOW);
     expect(txFindMany).toHaveBeenCalledWith({
-      where: { userId: "user1", date: { lt: new Date(2026, 9, 1) } },
+      where: { userId: "user1", date: { lt: new Date("2026-09-30T23:00:00Z") /* midnight 1 Oct in Lagos */ } },
     });
   });
 

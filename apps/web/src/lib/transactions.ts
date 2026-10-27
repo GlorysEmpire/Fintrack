@@ -35,6 +35,7 @@ import { APP_TIME_ZONE } from "./format-date";
 import { createOverrideInboxMessage } from "./inbox";
 import { parseFx } from "./money";
 import { getUserPlan } from "./plan";
+import { withUserLock } from "./user-lock";
 
 export type SessionUser = {
   id: string;
@@ -291,10 +292,25 @@ async function writeOverrideNote(
   });
 }
 
+/**
+ * Recording an expense reads the bucket's balance and then writes, so it runs
+ * under the user's lock: see user-lock.ts. Income takes no money from a bucket.
+ */
 export async function createTransaction(
   user: SessionUser,
   input: NewTransactionInput,
   now: Date = new Date()
+): Promise<TransactionResult> {
+  if (input.type === "e") {
+    return withUserLock(user.id, () => createUnlocked(user, input, now));
+  }
+  return createUnlocked(user, input, now);
+}
+
+async function createUnlocked(
+  user: SessionUser,
+  input: NewTransactionInput,
+  now: Date
 ): Promise<TransactionResult> {
   const when = resolveTransactionDate({
     dateKey: input.date,
@@ -357,11 +373,21 @@ export async function createTransaction(
   return { status: "ok", transaction, crossBucket: check.cross };
 }
 
+/** An edit can raise an expense, so it takes the same lock as recording one. */
 export async function updateTransaction(
   user: SessionUser,
   id: string,
   patch: TransactionPatch,
   now: Date = new Date()
+): Promise<TransactionResult> {
+  return withUserLock(user.id, () => updateUnlocked(user, id, patch, now));
+}
+
+async function updateUnlocked(
+  user: SessionUser,
+  id: string,
+  patch: TransactionPatch,
+  now: Date
 ): Promise<TransactionResult> {
   const existing = await prisma.transaction.findFirst({
     where: { id, userId: user.id },

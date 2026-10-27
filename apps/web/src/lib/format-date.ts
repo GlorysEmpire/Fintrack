@@ -8,10 +8,9 @@
  * FinTrack is Nigeria-first → always format in Africa/Lagos.
  */
 
-import { dateKeyInTimeZone, isDayOnlyDate } from "@fintrack/domain";
+import { APP_TIME_ZONE, dateKeyInTimeZone, isDayOnlyDate } from "@fintrack/domain";
 
-/** The one time zone FinTrack shows dates in and judges "today" by. */
-export const APP_TIME_ZONE = "Africa/Lagos";
+export { APP_TIME_ZONE };
 const TZ = APP_TIME_ZONE;
 
 function partsOf(d: Date, options: Intl.DateTimeFormatOptions) {

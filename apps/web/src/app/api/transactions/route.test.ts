@@ -240,6 +240,17 @@ describe("POST /api/transactions — a bucket is blocked at zero", () => {
     expect(await expensesOf(user.id)).toHaveLength(1);
   });
 
+  it("two expenses sent at the same moment can not both spend the same money", async () => {
+    const user = await funded(); // Spend holds ₦8,100
+    const results = await Promise.all([
+      post(expense({ amount: 5_000, note: "first" })),
+      post(expense({ amount: 5_000, note: "second" })),
+    ]);
+
+    expect(results.map((r) => r.status).sort()).toEqual([200, 422]);
+    expect(await expensesOf(user.id)).toHaveLength(1);
+  });
+
   it("blocks spending from a bucket that has received nothing yet", async () => {
     const user = await createUser();
     await seedPlan(user.id);

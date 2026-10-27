@@ -4,9 +4,11 @@
 import { redirect } from "next/navigation";
 import {
   allTimeBucketStates,
+  daysLeftInMonth,
   filterMonthTxs,
   forecast,
   monthSnapshot,
+  startOfMonth,
   transactionTotals,
   type MoneyTx,
 } from "@fintrack/domain";
@@ -77,17 +79,14 @@ export default async function DashboardPage() {
     fx
   );
 
-  const start = new Date();
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
+  const start = startOfMonth();
   const monthRows = allTxs.filter((t) => t.date >= start);
 
   // No sample / demo balances when income is zero
   const sampleWaterfall = null;
 
   const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysLeft = Math.max(0, lastDay - now.getDate());
+  const daysLeft = daysLeftInMonth(now);
 
   const forecastResult = forecast(plan, moneyTxs, 1, {
     base: user.baseCurrency,

@@ -446,6 +446,8 @@ export class FakeDb {
     this.failOn = null;
   }
 
+  private advisoryLocks = new Map<string, Promise<void>>();
+
   async $transaction(work: unknown): Promise<unknown> {
     const snapshot = this.tables.map((t) => structuredClone(t.rows));
     const restore = () => this.tables.forEach((t, i) => (t.rows = snapshot[i]));
@@ -461,7 +463,34 @@ export class FakeDb {
         return results;
       }
       if (typeof work === "function") {
-        return await (work as (tx: FakeDb) => unknown)(this);
+        // Like pg_advisory_xact_lock: a per-key lock that lasts until this
+        // transaction ends, so concurrent transactions on one key take turns.
+        const held: Array<() => void> = [];
+        const tx = Object.create(this, {
+          $executeRaw: {
+            value: async (_sql: TemplateStringsArray, key: unknown) => {
+              const name = String(key);
+              while (this.advisoryLocks.has(name)) {
+                await this.advisoryLocks.get(name);
+              }
+              let release!: () => void;
+              this.advisoryLocks.set(
+                name,
+                new Promise<void>((resolve) => (release = resolve))
+              );
+              held.push(() => {
+                this.advisoryLocks.delete(name);
+                release();
+              });
+              return 0;
+            },
+          },
+        });
+        try {
+          return await (work as (tx: FakeDb) => unknown)(tx);
+        } finally {
+          held.forEach((free) => free());
+        }
       }
       throw new Error("fake-db: unsupported $transaction argument");
     } catch (e) {

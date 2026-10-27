@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import {
   filterMonthTxs,
   monthSnapshot,
+  startOfMonth,
   type MoneyTx,
 } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
@@ -32,19 +33,25 @@ export async function GET() {
     : {};
   const fx = parseFx(user.fxRates);
 
-  const [sources, allTxs] = await Promise.all([
+  const [sources, monthRows, recentRows] = await Promise.all([
     prisma.incomeSource.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
     }),
+    // The whole month, never a capped slice: the month's numbers must not
+    // depend on how many transactions there happen to be.
+    prisma.transaction.findMany({
+      where: { userId: user.id, date: { gte: startOfMonth() } },
+      orderBy: { date: "desc" },
+    }),
     prisma.transaction.findMany({
       where: { userId: user.id },
       orderBy: { date: "desc" },
-      take: 100,
+      take: 20,
     }),
   ]);
 
-  const moneyTxs: MoneyTx[] = allTxs.map((t) => ({
+  const moneyTxs: MoneyTx[] = monthRows.map((t) => ({
     type: t.type as "i" | "e",
     amount: t.amount,
     currency: t.currency,
@@ -57,11 +64,6 @@ export async function GET() {
 
   // No sample balances on empty months
   const sampleWaterfall = null;
-
-  const start = new Date();
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
-  const monthRows = allTxs.filter((t) => t.date >= start);
 
   return NextResponse.json({
     ok: true,
@@ -82,6 +84,6 @@ export async function GET() {
     },
     sampleWaterfall,
     transactions: monthRows,
-    recentAll: allTxs.slice(0, 20),
+    recentAll: recentRows,
   });
 }

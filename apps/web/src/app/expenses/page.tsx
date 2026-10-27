@@ -10,7 +10,7 @@ import { getUserPlan } from "@/lib/plan";
 import { toTxRow } from "@/lib/tx-row";
 import { AppShell } from "@/components/AppShell";
 import { TransactionList } from "@/components/TransactionList";
-import { EDIT_WINDOW_RULE } from "@fintrack/domain";
+import { EDIT_WINDOW_RULE, startOfMonth } from "@fintrack/domain";
 import Link from "next/link";
 
 export default async function ExpensesPage() {
@@ -18,9 +18,7 @@ export default async function ExpensesPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const start = new Date();
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
+  const start = startOfMonth();
 
   const [plan, txs, inboxUnread] = await Promise.all([
     getUserPlan(user.id),

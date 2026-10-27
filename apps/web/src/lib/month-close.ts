@@ -5,22 +5,23 @@
  */
 import { prisma } from "./db";
 import {
+  monthKeyOf,
   openingBalancesForMonth,
+  startOfMonth,
+  startOfMonthOffset,
   sameOpeningBalances,
   type MoneyTx,
 } from "@fintrack/domain";
 import { parsePlan } from "./plan";
 import { parseFx, parseOpeningBalances } from "./money";
-/** Human: "July 2026" → Code: "2026-07" */
+/** Human: "July 2026" → Code: "2026-07" (Lagos time, never the server's) */
 export function monthKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1; // getMonth() is 0–11; people use 1–12
-  return `${y}-${String(m).padStart(2, "0")}`;
+  return monthKeyOf(d);
 }
 
 /** Human: the calendar month before this date → Code: Date at day 1 of previous month */
 export function previousMonthDate(d: Date = new Date()): Date {
-  return new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  return startOfMonthOffset(-1, d);
 }
 
 export type EnsureMonthResult =
@@ -67,7 +68,7 @@ export async function ensureMonthPacked(
   }
 
   // Human: every transaction before this month (they decide this month's openings)
-  const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const currentStart = startOfMonth(now);
   const pastTxs = await prisma.transaction.findMany({
     where: { userId, date: { lt: currentStart } },
   });

@@ -6,7 +6,7 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { filterMonthTxs, formatMoney, monthSnapshot, type CurrencyCode, type MoneyTx } from "@fintrack/domain";
+import { filterMonthTxs, formatMoney, monthSnapshot, startOfMonth, type CurrencyCode, type MoneyTx } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { ensureMonthPacked } from "@/lib/month-close";
 import { askSteward, buildUserContext, hasXaiKey } from "@/lib/ai";
@@ -37,19 +37,22 @@ export async function POST(req: Request) {
       : {};
     const fx = parseFx(user.fxRates);
 
-    const [sources, allTxs, historyRows] = await Promise.all([
+    const [sources, allTxs, overrideCount, recentMessages] = await Promise.all([
       prisma.incomeSource.findMany({ where: { userId: user.id } }),
+      // The whole month, so the figures the Steward quotes are complete
       prisma.transaction.findMany({
-        where: { userId: user.id },
+        where: { userId: user.id, date: { gte: startOfMonth() } },
         orderBy: { date: "desc" },
-        take: 200,
       }),
+      prisma.transaction.count({ where: { userId: user.id, override: true } }),
+      // The NEWEST 20 messages (then put back in reading order)
       prisma.aiMessage.findMany({
         where: { userId: user.id },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         take: 20,
       }),
     ]);
+    const historyRows = [...recentMessages].reverse();
 
     const moneyTxs: MoneyTx[] = allTxs.map((t) => ({
       type: t.type as "i" | "e",
@@ -61,7 +64,6 @@ export async function POST(req: Request) {
     }));
     const month = filterMonthTxs(moneyTxs);
     const snap = monthSnapshot(plan, month, user.baseCurrency, fx, opening);
-    const overrideCount = allTxs.filter((t) => t.override).length;
     const base = user.baseCurrency as CurrencyCode;
 
     const context = buildUserContext({
@@ -103,10 +105,18 @@ export async function POST(req: Request) {
       },
     });
 
+    // Distinct timestamps: a pair stored in the same millisecond would have no
+    // reliable reading order.
+    const askedAt = new Date();
     await prisma.aiMessage.createMany({
       data: [
-        { userId: user.id, role: "user", content: message },
-        { userId: user.id, role: "assistant", content: reply },
+        { userId: user.id, role: "user", content: message, createdAt: askedAt },
+        {
+          userId: user.id,
+          role: "assistant",
+          content: reply,
+          createdAt: new Date(askedAt.getTime() + 1),
+        },
       ],
     });
 
@@ -128,14 +138,15 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
-  const messages = await prisma.aiMessage.findMany({
+  // The newest 40, shown oldest-first
+  const newest = await prisma.aiMessage.findMany({
     where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 40,
   });
   return NextResponse.json({
     ok: true,
-    messages,
+    messages: newest.reverse(),
     liveAi: hasXaiKey(),
   });
 }

@@ -8,6 +8,7 @@
  * an earlier day.
  */
 import { NextResponse } from "next/server";
+import { startOfMonth } from "@fintrack/domain";
 import { routeError, unauthorized } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -31,10 +32,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, transactions: txs });
   }
 
-  // Current calendar month (server local date boundary)
-  const start = new Date();
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
+  // Current calendar month (Lagos time)
+  const start = startOfMonth();
   const monthRows = txs.filter((t) => t.date >= start);
   return NextResponse.json({ ok: true, transactions: monthRows });
 }

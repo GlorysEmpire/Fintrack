@@ -35,7 +35,12 @@ import { TITHE_FIRST_TEMPLATE } from "./templates";
 import type { BudgetPlan, PlanBucket, WaterfallLayer } from "./types";
 
 const fx = { NGN: 1, USD: 1580, GBP: 1990, EUR: 1710 };
-const NOW = new Date(2026, 9, 5); // 5 October 2026
+/** Noon UTC is the same calendar day in Lagos and on any machine running the tests */
+function noonUtc(y: number, m: number, d: number): Date {
+  return new Date(Date.UTC(y, m, d, 12));
+}
+
+const NOW = noonUtc(2026, 9, 5); // 5 October 2026
 const MONTHS = [5, 6, 7, 8, 9].map((m) => new Date(2026, m, 15)); // Jun … Oct
 
 function tx(type: "i" | "e", amount: number, date: Date, bucketId?: string, currency = "NGN"): MoneyTx {
@@ -95,16 +100,16 @@ const customPlan: BudgetPlan = {
  *   Oct  current month, one income so far
  */
 const history: MoneyTx[] = [
-  tx("i", 80_000, new Date(2026, 5, 3)),
-  tx("e", 2_000, new Date(2026, 5, 10), "spend"),
-  tx("e", 3_000, new Date(2026, 5, 12), "tithe"),
-  tx("i", 40_000, new Date(2026, 7, 1)),
-  tx("e", 30_000, new Date(2026, 7, 9), "spend"),
-  tx("e", 60_000, new Date(2026, 7, 20), "emergency"),
-  tx("i", 20, new Date(2026, 8, 4), undefined, "USD"),
-  tx("e", 9_000, new Date(2026, 8, 6), "tithe"),
-  tx("e", 1_000, new Date(2026, 8, 21), "save"),
-  tx("i", 50_000, new Date(2026, 9, 2)),
+  tx("i", 80_000, noonUtc(2026, 5, 3)),
+  tx("e", 2_000, noonUtc(2026, 5, 10), "spend"),
+  tx("e", 3_000, noonUtc(2026, 5, 12), "tithe"),
+  tx("i", 40_000, noonUtc(2026, 7, 1)),
+  tx("e", 30_000, noonUtc(2026, 7, 9), "spend"),
+  tx("e", 60_000, noonUtc(2026, 7, 20), "emergency"),
+  tx("i", 20, noonUtc(2026, 8, 4), undefined, "USD"),
+  tx("e", 9_000, noonUtc(2026, 8, 6), "tithe"),
+  tx("e", 1_000, noonUtc(2026, 8, 21), "save"),
+  tx("i", 50_000, noonUtc(2026, 9, 2)),
 ];
 
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
