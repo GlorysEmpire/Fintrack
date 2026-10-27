@@ -29,8 +29,9 @@ const customSourceSchema = z.object({
 });
 
 const sourcesFields = {
-  presetIds: z.array(z.string()).optional(),
-  customSources: z.array(customSourceSchema).optional(),
+  // Bounded: an oversized list is refused before it is processed
+  presetIds: z.array(z.string().max(60)).max(50).optional(),
+  customSources: z.array(customSourceSchema).max(50).optional(),
 };
 
 const schema = z.discriminatedUnion("path", [

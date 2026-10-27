@@ -153,6 +153,14 @@ export const resetUserLimiter = makeLimiter(
   "ft:reset:user"
 );
 
+/** 10 data exports per user per hour (each reads everything the user has) */
+export const exportUserLimiter = makeLimiter(
+  10,
+  "1 h",
+  60 * 60 * 1000,
+  "ft:export:user"
+);
+
 /** Client IP from reverse-proxy headers (Vercel / similar). */
 export function clientIp(req: Request): string {
   const xff = req.headers.get("x-forwarded-for");

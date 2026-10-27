@@ -89,6 +89,28 @@ export default async function SettingsPage() {
         baseCurrency={user.baseCurrency}
       />
 
+      <div className="sec">Your data</div>
+      <div className="card">
+        <p>Download everything FinTrack holds about your money. It is yours.</p>
+        <p style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <a href="/api/export" className="btn btn-ghost" style={{ display: "inline-block" }}>
+            Everything (JSON)
+          </a>
+          <a href="/api/export?type=transactions" className="btn btn-ghost" style={{ display: "inline-block" }}>
+            Transactions (CSV)
+          </a>
+          <a href="/api/export?type=transfers" className="btn btn-ghost" style={{ display: "inline-block" }}>
+            Transfers (CSV)
+          </a>
+          <a href="/api/export?type=accounts" className="btn btn-ghost" style={{ display: "inline-block" }}>
+            Accounts (CSV)
+          </a>
+        </p>
+        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+          Your password and sign-in details are never included.
+        </p>
+      </div>
+
       <div className="sec">Danger zone</div>
       <ResetFinTrack counts={resetPreview} email={user.email} />
     </AppShell>

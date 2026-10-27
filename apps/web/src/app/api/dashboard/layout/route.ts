@@ -36,8 +36,8 @@ const putSchema = z.union([
     visible: z.boolean(),
   }),
   z.object({
-    order: z.array(z.string()).optional(),
-    hidden: z.array(z.string()).optional(),
+    order: z.array(z.string().max(60)).max(50).optional(),
+    hidden: z.array(z.string().max(60)).max(50).optional(),
   }),
 ]);
 
