@@ -379,12 +379,13 @@ export class FakeDb {
       occurrenceDate: null,
       accountId: null,
       transferId: null,
+      importId: null,
       date: new Date(),
       createdAt: new Date(),
     }),
     [],
     this,
-    [["recurringRuleId", "occurrenceDate"], ["transferId"]]
+    [["recurringRuleId", "occurrenceDate"], ["transferId"], ["importId"]]
   );
   recurringRule = new Table(
     "recurringRule",
@@ -435,12 +436,13 @@ export class FakeDb {
       status: "active",
       provider: null,
       externalAccountId: null,
+      connectionId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }),
     [],
     this,
-    [["userId", "name"]]
+    [["userId", "name"], ["connectionId", "externalAccountId"]]
   );
   transfer = new Table(
     "transfer",
@@ -464,6 +466,45 @@ export class FakeDb {
     this
   );
 
+  bankConnection = new Table(
+    "bankConnection",
+    () => ({
+      id: newId(),
+      status: "active",
+      consentGrantedAt: new Date(),
+      consentExpiresAt: null,
+      revokedAt: null,
+      cursor: null,
+      lastSyncAt: null,
+      lastSuccessAt: null,
+      lastError: null,
+      consecutiveFailures: 0,
+      nextRetryAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    [],
+    this
+  );
+  importedTransaction = new Table(
+    "importedTransaction",
+    () => ({
+      id: newId(),
+      originalAmountMinor: null,
+      originalCurrency: null,
+      description: null,
+      counterparty: null,
+      review: "new",
+      transactionId: null,
+      attention: null,
+      firstSeenAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    [],
+    this,
+    [["connectionId", "externalId"], ["transactionId"]]
+  );
+
   private get tables(): Table[] {
     return [
       this.user,
@@ -478,6 +519,8 @@ export class FakeDb {
       this.account,
       this.transfer,
       this.accountAdjustment,
+      this.bankConnection,
+      this.importedTransaction,
     ];
   }
 

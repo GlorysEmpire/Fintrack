@@ -7,29 +7,12 @@
  * secret configured the endpoint refuses every request. All the work, and the
  * rules about it, are in lib/recurring.ts.
  */
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/cron-auth";
 import { runDueRecurring } from "@/lib/recurring";
 
-function sameSecret(given: string | null, secret: string): boolean {
-  if (!given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(secret);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET?.trim();
-  // Refuse when unset so the endpoint is never open by accident
-  if (!secret) return false;
-  const bearer = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? null;
-  return (
-    sameSecret(bearer, secret) || sameSecret(req.headers.get("x-cron-secret"), secret)
-  );
-}
-
 async function run(req: Request) {
-  if (!authorized(req)) {
+  if (!cronAuthorized(req)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
   const at = new Date();

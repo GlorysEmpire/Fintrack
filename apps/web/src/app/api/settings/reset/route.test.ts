@@ -84,6 +84,11 @@ async function userWithEverything(extra: Partial<User> = {}) {
     data: { userId: user.id, accountId: bank.id, amountMinor: BigInt(-100), date: new Date() },
   });
   await testDb.transaction.updateMany({ where: { userId: user.id, type: "i" }, data: { accountId: bank.id } });
+  // A read-only bank link with one imported transaction waiting for review
+  const link = await testDb.bankConnection.create({ data: { userId: user.id, provider: "mock" } });
+  await testDb.importedTransaction.create({
+    data: { userId: user.id, connectionId: link.id, accountId: bank.id, externalId: "ext-1", status: "posted", amountMinor: BigInt(-1_000), currency: "NGN", occurredAt: new Date() },
+  });
   await testDb.session.create({
     data: { userId: user.id, token: `tok-${user.id}`, expiresAt: new Date(Date.now() + 86_400_000) },
   });
@@ -92,7 +97,7 @@ async function userWithEverything(extra: Partial<User> = {}) {
 
 async function snapshot(userId: string) {
   const where = { userId };
-  const [user, transactions, plans, sources, rules, inbox, ai, accounts, transfers, adjustments, sessions] = await Promise.all([
+  const [user, transactions, plans, sources, rules, inbox, ai, accounts, transfers, adjustments, connections, imports, sessions] = await Promise.all([
     testDb.user.findUnique({ where: { id: userId } }),
     testDb.transaction.count({ where }),
     testDb.budgetPlan.count({ where }),
@@ -103,17 +108,19 @@ async function snapshot(userId: string) {
     testDb.account.count({ where }),
     testDb.transfer.count({ where }),
     testDb.accountAdjustment.count({ where }),
+    testDb.bankConnection.count({ where }),
+    testDb.importedTransaction.count({ where }),
     testDb.session.findMany({ where }),
   ]);
   return {
     user,
-    counts: { transactions, plans, sources, rules, inbox, ai, accounts, transfers, adjustments },
+    counts: { transactions, plans, sources, rules, inbox, ai, accounts, transfers, adjustments, connections, imports },
     sessions: sessions.map((s) => s.token),
   };
 }
 
-const EVERYTHING = { transactions: 3, plans: 1, sources: 1, rules: 1, inbox: 1, ai: 1, accounts: 2, transfers: 1, adjustments: 1 };
-const NOTHING = { transactions: 0, plans: 0, sources: 0, rules: 0, inbox: 0, ai: 0, accounts: 0, transfers: 0, adjustments: 0 };
+const EVERYTHING = { transactions: 3, plans: 1, sources: 1, rules: 1, inbox: 1, ai: 1, accounts: 2, transfers: 1, adjustments: 1, connections: 1, imports: 1 };
+const NOTHING = { transactions: 0, plans: 0, sources: 0, rules: 0, inbox: 0, ai: 0, accounts: 0, transfers: 0, adjustments: 0, connections: 0, imports: 0 };
 
 describe("the confirmation words", () => {
   it("accepts the phrase, forgiving case and stray spaces, and nothing else", () => {
@@ -180,6 +187,8 @@ describe("POST /api/settings/reset — what a confirmed reset does", () => {
       aiMessages: 1,
       accounts: 2,
       transfers: 1,
+      bankConnections: 1,
+      importedTransactions: 1,
     });
 
     const res = await reset({ confirmation: RESET_CONFIRMATION_PHRASE });
@@ -196,6 +205,8 @@ describe("POST /api/settings/reset — what a confirmed reset does", () => {
       aiMessages: 1,
       accounts: 2,
       transfers: 1,
+      bankConnections: 1,
+      importedTransactions: 1,
     });
 
     expect((await snapshot(user.id)).counts).toEqual(NOTHING);

@@ -5,6 +5,8 @@
  * checked (schema.prisma):
  *
  *   ERASED
+ *     BankConnection, ImportedTransaction
+ *                    the read-only bank links and what they imported
  *     Transfer, AccountAdjustment, Account
  *                    where the money was held, and how it moved between those
  *                    places. Money history, so it goes with the rest of it.
@@ -45,6 +47,8 @@ export type ResetCounts = {
   aiMessages: number;
   accounts: number;
   transfers: number;
+  bankConnections: number;
+  importedTransactions: number;
 };
 
 /**
@@ -61,7 +65,7 @@ function requireUserId(userId: unknown): string {
 /** What a reset would erase, for the confirmation dialog. Reads only. */
 export async function getResetPreview(userIdInput: string): Promise<ResetCounts> {
   const userId = requireUserId(userIdInput);
-  const [transactions, plans, incomeSources, recurringRules, inboxMessages, aiMessages, accounts, transfers] =
+  const [transactions, plans, incomeSources, recurringRules, inboxMessages, aiMessages, accounts, transfers, bankConnections, importedTransactions] =
     await Promise.all([
       prisma.transaction.count({ where: { userId } }),
       prisma.budgetPlan.count({ where: { userId } }),
@@ -71,8 +75,10 @@ export async function getResetPreview(userIdInput: string): Promise<ResetCounts>
       prisma.aiMessage.count({ where: { userId } }),
       prisma.account.count({ where: { userId } }),
       prisma.transfer.count({ where: { userId } }),
+      prisma.bankConnection.count({ where: { userId } }),
+      prisma.importedTransaction.count({ where: { userId } }),
     ]);
-  return { transactions, plans, incomeSources, recurringRules, inboxMessages, aiMessages, accounts, transfers };
+  return { transactions, plans, incomeSources, recurringRules, inboxMessages, aiMessages, accounts, transfers, bankConnections, importedTransactions };
 }
 
 /**
@@ -82,9 +88,10 @@ export async function getResetPreview(userIdInput: string): Promise<ResetCounts>
 export async function resetFinancialData(userIdInput: string): Promise<ResetCounts> {
   const userId = requireUserId(userIdInput);
 
-  const [transfers, , transactions, recurringRules, incomeSources, inboxMessages, aiMessages, accounts, plans] =
+  const [importedTransactions, transfers, , transactions, recurringRules, incomeSources, inboxMessages, aiMessages, accounts, bankConnections, plans] =
     await prisma.$transaction([
       // Money that points at accounts goes before the accounts themselves
+      prisma.importedTransaction.deleteMany({ where: { userId } }),
       prisma.transfer.deleteMany({ where: { userId } }),
       prisma.accountAdjustment.deleteMany({ where: { userId } }),
       // Transactions next: they reference recurring rules and accounts
@@ -94,6 +101,7 @@ export async function resetFinancialData(userIdInput: string): Promise<ResetCoun
       prisma.inboxMessage.deleteMany({ where: { userId } }),
       prisma.aiMessage.deleteMany({ where: { userId } }),
       prisma.account.deleteMany({ where: { userId } }),
+      prisma.bankConnection.deleteMany({ where: { userId } }),
       prisma.budgetPlan.deleteMany({ where: { userId } }),
       // Last: if the account row is missing this throws and rolls everything back
       prisma.user.update({
@@ -111,5 +119,7 @@ export async function resetFinancialData(userIdInput: string): Promise<ResetCoun
     aiMessages: aiMessages.count,
     accounts: accounts.count,
     transfers: transfers.count,
+    bankConnections: bankConnections.count,
+    importedTransactions: importedTransactions.count,
   };
 }

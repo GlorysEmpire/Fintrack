@@ -36,6 +36,9 @@ export default async function AccountsPage() {
         &ldquo;what is it for?&rdquo;. Moving money between your own accounts is
         a transfer: it is never income and never spending.
       </p>
+      <p style={{ marginBottom: 12 }}>
+        <a href="/imports">Bank imports (read-only) →</a>
+      </p>
       <AccountsManager
         accounts={accounts}
         transfers={transfers}

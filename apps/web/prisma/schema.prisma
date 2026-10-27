@@ -53,11 +53,13 @@ model User {
   accounts             Account[]
   transfers            Transfer[]
   accountAdjustments   AccountAdjustment[]
+  bankConnections      BankConnection[]
+  importedTransactions ImportedTransaction[]
   householdMemberships HouseholdMember[]
   /// JSON string of FX rates (NGN-denominated)
-  fxRates              String              @default("{\"NGN\":1,\"USD\":1580,\"GBP\":1990,\"EUR\":1710}")
+  fxRates              String                @default("{\"NGN\":1,\"USD\":1580,\"GBP\":1990,\"EUR\":1710}")
   /// JSON: { order: string[], hidden: string[] } — dashboard section preferences
-  dashboardLayoutJson  String              @default("")
+  dashboardLayoutJson  String                @default("")
 }
 
 // Shared household (schema only — UI in a follow-up)
@@ -220,6 +222,9 @@ model Transaction {
   /// with that transfer, and can not be edited or deleted on its own.
   transferId      String?        @unique
   transfer        Transfer?      @relation("TransferFee", fields: [transferId], references: [id], onDelete: Cascade)
+  /// The bank import this transaction was created from (set in the same write
+  /// that creates it). Unique, so one import can never become two transactions.
+  importId        String?        @unique
   /// When it happened (the user may file a transaction under an earlier day)
   date            DateTime       @default(now())
   /// When it was recorded. Starts the edit window; never set by the client.
@@ -269,34 +274,38 @@ model RecurringRule {
 // or after the opening date (see packages/domain/src/accounts.ts). Accounts are
 // archived, never deleted, while history refers to them.
 model Account {
-  id                  String   @id @default(cuid())
+  id                  String          @id @default(cuid())
   userId              String
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                String
   /// "asset" | "liability"
   kind                String
   /// bank | cash | wallet | savings | investment | credit_card | loan | other_asset | other_liability
   type                String
   institution         String?
-  currency            String   @default("NGN")
+  currency            String          @default("NGN")
   /// Signed minor units (kobo/cents). A debt is negative: owing 20,000 is -2000000.
-  openingBalanceMinor BigInt   @default(0)
+  openingBalanceMinor BigInt          @default(0)
   /// Events before this moment are already inside the opening balance
   openingDate         DateTime
   /// active | archived | disconnected
-  status              String   @default("active")
-  /// For future bank integrations; unused today
+  status              String          @default("active")
+  /// Set when the account is read from a bank connection (read-only)
   provider            String?
   externalAccountId   String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  connectionId        String?
+  connection          BankConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   transactions Transaction[]
-  transfersOut Transfer[]          @relation("TransferFrom")
-  transfersIn  Transfer[]          @relation("TransferTo")
+  transfersOut Transfer[]            @relation("TransferFrom")
+  transfersIn  Transfer[]            @relation("TransferTo")
   adjustments  AccountAdjustment[]
+  imports      ImportedTransaction[]
 
   @@unique([userId, name])
+  @@unique([connectionId, externalAccountId])
   @@index([userId])
 }
 
@@ -353,4 +362,76 @@ model AccountAdjustment {
 
   @@index([accountId])
   @@index([userId])
+}
+
+// A READ-ONLY link to a bank, through a provider (see lib/bank). Holds consent
+// and sync state only. There is deliberately no credential here: when a real
+// provider is chosen, access tokens must be stored encrypted at rest. Nothing in
+// this model can move money.
+model BankConnection {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Which adapter reads it (e.g. "mock"). Provider details stay behind the adapter.
+  provider            String
+  /// active | error (stopped after repeated failures; needs the person) | revoked | expired
+  status              String    @default("active")
+  consentGrantedAt    DateTime  @default(now())
+  /// When the provider's consent lapses, if it says
+  consentExpiresAt    DateTime?
+  revokedAt           DateTime?
+  /// Where the next sync resumes (provider-defined)
+  cursor              String?
+  lastSyncAt          DateTime?
+  lastSuccessAt       DateTime?
+  /// A plain sentence about the last failure; never provider payloads or secrets
+  lastError           String?
+  consecutiveFailures Int       @default(0)
+  nextRetryAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  accounts Account[]
+  imports  ImportedTransaction[]
+
+  @@index([userId])
+}
+
+// What a provider says happened at a bank. NOT a FinTrack transaction until a
+// person reviews it. (connectionId, externalId) is unique, so the same provider
+// transaction can never be imported twice.
+model ImportedTransaction {
+  id                  String         @id @default(cuid())
+  userId              String
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connectionId        String
+  connection          BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  accountId           String
+  account             Account        @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  /// The provider's own id for the transaction
+  externalId          String
+  /// pending | posted | reversed
+  status              String
+  /// Signed minor units in `currency`: money in is positive
+  amountMinor         BigInt
+  currency            String
+  /// What the provider originally reported, when it differs from the above
+  originalAmountMinor BigInt?
+  originalCurrency    String?
+  /// When it happened at the bank
+  occurredAt          DateTime
+  description         String?
+  counterparty        String?
+  /// new | accepted | matched | ignored
+  review              String         @default("new")
+  /// The FinTrack transaction this became (accepted) or was matched to (an id only)
+  transactionId       String?        @unique
+  /// Set when the bank changed something the person had already acted on
+  attention           String?
+  firstSeenAt         DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@unique([connectionId, externalId])
+  @@index([userId, review])
+  @@index([accountId])
 }

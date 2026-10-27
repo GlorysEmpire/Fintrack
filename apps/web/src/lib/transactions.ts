@@ -62,6 +62,11 @@ export type NewTransactionInput = {
    * occurrence of which rule this is. The database refuses a second one.
    */
   recurring?: { ruleId: string; occurrenceDate: Date };
+  /**
+   * Set only by the bank-import review: the import this transaction is created
+   * from. Unique in the database, so one import can never become two transactions.
+   */
+  importId?: string;
 };
 
 /** Fields that may change while a transaction is still editable. The type may not. */
@@ -364,6 +369,7 @@ async function createUnlocked(
         note: clean(input.note) || null,
         date: when.date,
         accountId,
+        importId: input.importId ?? null,
         recurringRuleId: input.recurring?.ruleId ?? null,
         occurrenceDate: input.recurring?.occurrenceDate ?? null,
       },
@@ -399,6 +405,7 @@ async function createUnlocked(
       override: check.cross,
       date: when.date,
       accountId,
+      importId: input.importId ?? null,
       recurringRuleId: input.recurring?.ruleId ?? null,
       occurrenceDate: input.recurring?.occurrenceDate ?? null,
     },
@@ -547,7 +554,13 @@ export async function deleteTransaction(
   }
 
   // The Inbox notes about this transaction go with it: it was a mistaken log.
+  // A bank import that became (or was matched to) this transaction goes back to
+  // the review queue, so the bank's record is not lost with it.
   await prisma.$transaction([
+    prisma.importedTransaction.updateMany({
+      where: { userId: user.id, transactionId: existing.id },
+      data: { review: "new", transactionId: null },
+    }),
     prisma.inboxMessage.deleteMany({
       where: { userId: user.id, relatedTxId: existing.id },
     }),

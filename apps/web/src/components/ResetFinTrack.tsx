@@ -107,6 +107,12 @@ export function ResetFinTrack({
             between them
           </li>
           <li>
+            <strong>
+              {count(counts.bankConnections, "bank connection", "bank connections")}
+            </strong>{" "}
+            and <strong>{count(counts.importedTransactions, "imported bank transaction", "imported bank transactions")}</strong>
+          </li>
+          <li>
             <strong>Your plan</strong> and all its buckets, with every bucket
             balance and all carried-over money
           </li>
