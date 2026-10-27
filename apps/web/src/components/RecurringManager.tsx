@@ -85,6 +85,30 @@ export function RecurringManager({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toDelete, setToDelete] = useState<RecurringRuleRow | null>(null);
+  /** The rule being changed; null = the form adds a new one */
+  const [editing, setEditing] = useState<RecurringRuleRow | null>(null);
+
+  function openNew() {
+    setEditing(null);
+    setError(null);
+    setStartDate(today);
+    setShowForm(true);
+  }
+
+  function openEdit(rule: RecurringRuleRow) {
+    setEditing(rule);
+    setError(null);
+    setType(rule.type);
+    setAmount(String(rule.amount));
+    setCurrency(rule.currency as CurrencyCode);
+    setBucketId(rule.bucketId ?? buckets[0]?.id ?? "");
+    setSourceId(rule.sourceId ?? "");
+    setNote(rule.note ?? "");
+    setCadence(rule.cadence);
+    setDayOfMonth(String(rule.dayOfMonth ?? 1));
+    setStartDate("");
+    setShowForm(true);
+  }
 
   async function call(url: string, method: string, body?: unknown): Promise<boolean> {
     setError(null);
@@ -104,24 +128,41 @@ export function RecurringManager({
     }
   }
 
-  async function add(e: React.FormEvent) {
+  async function save(e: React.FormEvent) {
     e.preventDefault();
-    setBusy("add");
-    const ok = await call("/api/recurring", "POST", {
-      type,
-      amount: Number(amount),
-      currency,
-      bucketId: type === "e" ? bucketId || null : null,
-      sourceId: type === "i" ? sourceId || null : null,
-      note: note.trim() || null,
-      cadence,
-      dayOfMonth: cadence === "monthly" ? Number(dayOfMonth) : null,
-      startDate,
-    });
+    setBusy("save");
+    const day = cadence === "monthly" ? Number(dayOfMonth) : null;
+    const ok = editing
+      ? await call(`/api/recurring/${editing.id}`, "PATCH", {
+          amount: Number(amount),
+          currency,
+          ...(editing.type === "e"
+            ? { bucketId: bucketId || null }
+            : { sourceId: sourceId || null }),
+          note: note.trim() || null,
+          // Only send the schedule when it changed: changing it restarts it from today
+          ...(cadence !== editing.cadence ||
+          day !== editing.dayOfMonth ||
+          startDate
+            ? { cadence, dayOfMonth: day, ...(startDate ? { startDate } : {}) }
+            : {}),
+        })
+      : await call("/api/recurring", "POST", {
+          type,
+          amount: Number(amount),
+          currency,
+          bucketId: type === "e" ? bucketId || null : null,
+          sourceId: type === "i" ? sourceId || null : null,
+          note: note.trim() || null,
+          cadence,
+          dayOfMonth: day,
+          startDate,
+        });
     setBusy(null);
     if (ok) {
       setAmount("");
       setNote("");
+      setEditing(null);
       setShowForm(false);
     }
   }
@@ -197,6 +238,14 @@ export function RecurringManager({
                 type="button"
                 className="btn btn-ghost"
                 disabled={busy === rule.id}
+                onClick={() => openEdit(rule)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={busy === rule.id}
                 onClick={() => setToDelete(rule)}
               >
                 Delete
@@ -208,16 +257,17 @@ export function RecurringManager({
 
       <div className="card" style={{ marginTop: 8 }}>
         {!showForm ? (
-          <button type="button" className="btn btn-primary" onClick={() => setShowForm(true)}>
+          <button type="button" className="btn btn-primary" onClick={openNew}>
             + New recurring rule
           </button>
         ) : (
-          <form onSubmit={add} style={{ display: "grid", gap: 8 }}>
-            <div className="card-t">New recurring rule</div>
+          <form onSubmit={save} style={{ display: "grid", gap: 8 }}>
+            <div className="card-t">{editing ? "Change recurring rule" : "New recurring rule"}</div>
             <div style={{ display: "flex", gap: 8 }}>
               <select
                 className="minp"
                 aria-label="Income or expense"
+                disabled={editing !== null}
                 value={type}
                 onChange={(e) => setType(e.target.value as "i" | "e")}
               >
@@ -315,7 +365,7 @@ export function RecurringManager({
               <input
                 className="minp"
                 type="date"
-                aria-label="Starts on"
+                aria-label={editing ? "Restart from (optional)" : "Starts on"}
                 min={today}
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -323,17 +373,22 @@ export function RecurringManager({
             </div>
             <p className="muted" style={{ fontSize: 13 }}>
               In a month without that day it falls on the last day of the month.
+              {editing &&
+                " Changing how often it runs restarts it from today (or the date you pick)."}
             </p>
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="submit" className="btn btn-primary" disabled={busy === "add"}>
-                {busy === "add" ? "Saving…" : "Save rule"}
+              <button type="submit" className="btn btn-primary" disabled={busy === "save"}>
+                {busy === "save" ? "Saving…" : "Save rule"}
               </button>
               <button
                 type="button"
                 className="btn btn-ghost"
-                onClick={() => setShowForm(false)}
-                disabled={busy === "add"}
+                onClick={() => {
+                  setShowForm(false);
+                  setEditing(null);
+                }}
+                disabled={busy === "save"}
               >
                 Cancel
               </button>
