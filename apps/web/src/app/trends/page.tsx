@@ -6,7 +6,7 @@
 import { redirect } from "next/navigation";
 import { formatMoney, type CurrencyCode, type MonthPerformance } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
-import { getPerformance } from "@/lib/performance";
+import { getStewardView } from "@/lib/steward";
 import { formatExact } from "@/lib/money-format";
 import { unreadCount } from "@/lib/inbox";
 import { AppShell } from "@/components/AppShell";
@@ -32,7 +32,9 @@ export default async function TrendsPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [view, inboxUnread] = await Promise.all([getPerformance(user), unreadCount(user.id)]);
+  const [steward, inboxUnread] = await Promise.all([getStewardView(user), unreadCount(user.id)]);
+  const view = steward.performance;
+  const insights = steward.insights;
   const base = view.baseCurrency as CurrencyCode;
   const money = (n: number) => formatMoney(n, base);
   const rows = [...view.months].reverse(); // newest first
@@ -57,6 +59,34 @@ export default async function TrendsPage() {
         </div>
       ) : (
         <>
+          <div className="card" role="status">
+            <div className="card-t">What stands out</div>
+            {insights.length === 0 ? (
+              <p style={{ marginTop: 6 }} className="muted">
+                Nothing stands out right now.
+              </p>
+            ) : (
+              <ul style={{ marginTop: 6, paddingLeft: 18, display: "grid", gap: 10 }}>
+                {insights.map((i) => (
+                  <li key={i.id}>
+                    <strong>{i.title}.</strong> {i.detail}
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      {i.evidence.join(" · ")}
+                    </div>
+                    {i.next && (
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Next: {i.next}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              Worked out by FinTrack from your records. The Steward only explains these; it does not decide them.
+            </p>
+          </div>
+
           <div className="card" role="status">
             <div className="card-t">Expense rate over time</div>
             <p style={{ marginTop: 6 }}>{view.trend.explanation}</p>

@@ -110,3 +110,72 @@ describe("POST /api/ai/chat — the figures it is given", () => {
     expect(askSteward.mock.calls[0][0].offlineCtx.overrideCount).toBe(3);
   });
 });
+
+describe("POST /api/ai/chat — what the Steward is told", () => {
+  it("includes the month, buckets, accounts, recent months, and the facts FinTrack worked out", async () => {
+    const user = await createUser();
+    signIn(user);
+    const { seedPlan } = await import("@/test/harness");
+    await seedPlan(user.id);
+    await seedTx(user.id, { type: "i", amount: 100_000 });
+    const bank = await testDb.account.create({
+      data: { userId: user.id, name: "GTBank", kind: "asset", type: "bank", openingBalanceMinor: BigInt(-500_00), openingDate: new Date("2026-01-01T12:00:00Z") },
+    });
+    askSteward.mockResolvedValue({ reply: "ok", mode: "offline" });
+
+    await POST(jsonRequest("POST", { message: "how am I doing?" }));
+
+    const call = askSteward.mock.calls[0][0];
+    expect(call.context).toContain("Income: ₦100,000");
+    expect(call.context).toContain("Spend: available");
+    expect(call.context).toContain("Accounts (balances the user recorded; these are not net worth)");
+    expect(call.context).toContain("GTBank (Bank account): -₦500 NGN");
+    expect(call.context).toContain("Facts worked out by FinTrack");
+    expect(call.context).toContain("GTBank is below zero"); // a derived fact, with its evidence
+    expect(call.context).toContain("Limits of these numbers");
+    // the guided (offline) reply gets the same facts
+    expect(call.offlineCtx.insightLines.join(" ")).toContain("GTBank is below zero");
+    expect(bank.id).toBeTruthy();
+  });
+
+  it("never includes another user's accounts or figures", async () => {
+    const other = await createUser();
+    await testDb.account.create({
+      data: { userId: other.id, name: "SecretVault", kind: "asset", type: "savings", openingBalanceMinor: BigInt(999_999_00), openingDate: new Date("2026-01-01T12:00:00Z") },
+    });
+    await seedTx(other.id, { type: "i", amount: 7_777_777 });
+    const user = await createUser();
+    signIn(user);
+    askSteward.mockResolvedValue({ reply: "ok", mode: "offline" });
+
+    await POST(jsonRequest("POST", { message: "hi" }));
+
+    const context = askSteward.mock.calls[0][0].context as string;
+    expect(context).not.toContain("SecretVault");
+    expect(context).not.toContain("7,777,777");
+    expect(context).toContain("(no accounts yet)");
+  });
+
+  it("with no data at all, says so instead of inventing anything", async () => {
+    const user = await createUser();
+    signIn(user);
+    askSteward.mockResolvedValue({ reply: "ok", mode: "offline" });
+    await POST(jsonRequest("POST", { message: "hi" }));
+    const context = askSteward.mock.calls[0][0].context as string;
+    expect(context).toContain("(no plan yet)");
+    expect(context).toContain("(nothing recorded yet)");
+    expect(context).toContain("nothing stands out right now");
+  });
+});
+
+describe("the guided (offline) Steward", () => {
+  it("answers 'am I on track' with the facts worked out, not generic advice alone", async () => {
+    const { offlineAdvisorReply } = await import("@fintrack/domain");
+    const reply = offlineAdvisorReply("am I on track?", {
+      income: 100_000, expenses: 20_000, net: 80_000, planName: "Plan", bucketLines: ["Spend: left ₦1"], overrideCount: 0,
+      insightLines: ["- [attention] GTBank is below zero. A record may be missing. (Recorded balance: −₦500.00)"],
+    });
+    expect(reply).toContain("What stands out right now");
+    expect(reply).toContain("GTBank is below zero");
+  });
+});

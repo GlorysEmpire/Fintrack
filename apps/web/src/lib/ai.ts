@@ -6,13 +6,7 @@
  * If no key: offlineAdvisorReply() keeps the product usable.
  */
 import OpenAI from "openai";
-import {
-  buildAdvisorSystemPrompt,
-  offlineAdvisorReply,
-  type BudgetPlan,
-  type MonthBucketState,
-} from "@fintrack/domain";
-import { formatMoney, type CurrencyCode } from "@fintrack/domain";
+import { buildAdvisorSystemPrompt, offlineAdvisorReply } from "@fintrack/domain";
 
 export function hasXaiKey(): boolean {
   return Boolean(process.env.XAI_API_KEY?.trim());
@@ -25,39 +19,6 @@ function client() {
     apiKey: key,
     baseURL: "https://api.x.ai/v1",
   });
-}
-
-export function buildUserContext(opts: {
-  email: string;
-  baseCurrency: string;
-  plan: BudgetPlan | null;
-  income: number;
-  expenses: number;
-  net: number;
-  buckets: MonthBucketState[];
-  overrideCount: number;
-  sourcesSummary: string;
-}): string {
-  const base = opts.baseCurrency as CurrencyCode;
-  const bucketLines = opts.buckets.map((b) => {
-    const name =
-      opts.plan?.buckets.find((p) => p.id === b.bucketId)?.name || b.bucketId;
-    return `- ${name}: allocated ${formatMoney(b.opening + b.allocated, base)}, spent ${formatMoney(b.spent, base)}, left ${formatMoney(b.closing, base)}${b.carryOver ? " (carry-over)" : ""}`;
-  });
-
-  return [
-    `User email: ${opts.email}`,
-    `Base currency: ${opts.baseCurrency}`,
-    `Plan: ${opts.plan?.name || "none"}`,
-    `Income this month: ${formatMoney(opts.income, base)}`,
-    `Expenses this month: ${formatMoney(opts.expenses, base)}`,
-    `Net: ${formatMoney(opts.net, base)}`,
-    `Override spends this month: ${opts.overrideCount}`,
-    `Buckets:`,
-    ...bucketLines,
-    `Income sources:`,
-    opts.sourcesSummary || "(none)",
-  ].join("\n");
 }
 
 /**
@@ -74,6 +35,7 @@ export async function askSteward(opts: {
     planName: string | null;
     bucketLines: string[];
     overrideCount: number;
+    insightLines?: string[];
   };
 }): Promise<{ reply: string; mode: "xai" | "offline" }> {
   const system = buildAdvisorSystemPrompt(opts.context);

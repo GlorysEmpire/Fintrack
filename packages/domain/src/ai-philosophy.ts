@@ -42,6 +42,14 @@ ${FINTRACK_PRINCIPLES.map((p, i) => `${i + 1}. ${p}`).join("\n")}
 - End with one clear next action when useful.
 - If data is missing, say what to log — do not invent balances.
 
+## Ground rules about numbers (non-negotiable)
+- Use ONLY the figures in the context below. Quote them; do not add, subtract or estimate new ones.
+- The "Facts worked out by FinTrack" were computed by code. Explain them in plain words; never contradict or re-derive them.
+- Account balances are what the user recorded, not net worth. Never say their wealth rose or fell.
+- Never name a specific investment, predict returns, or tell them to buy or sell anything.
+- If the context lacks something (no income, no accounts, months with no records), say so and name what to record.
+- A lower expense rate is not automatically better: always keep the amounts in view.
+
 ## Modes you can use (pick what fits)
 - Plan architect: stress-test or refine allocation
 - Monthly review: said vs done
@@ -71,9 +79,14 @@ export function offlineAdvisorReply(
     planName: string | null;
     bucketLines: string[];
     overrideCount: number;
+    /** Facts FinTrack worked out, as plain lines */
+    insightLines?: string[];
   }
 ): string {
   const q = question.toLowerCase();
+  const facts = ctx.insightLines?.length
+    ? `\n\nWhat stands out right now:\n${ctx.insightLines.join("\n")}`
+    : "";
   const base = `Plan: ${ctx.planName || "not set yet"}. Income this month: ${ctx.income.toFixed(0)}. Expenses: ${ctx.expenses.toFixed(0)}. Net: ${ctx.net.toFixed(0)}.`;
 
   if (q.includes("tithe") || q.includes("give")) {
@@ -87,9 +100,9 @@ export function offlineAdvisorReply(
       ctx.net >= 0
         ? "You still have margin — protect it."
         : "Expenses exceed logged income — pause new lifestyle spend until income is logged or plan is adjusted.";
-    return `${base}\n\n${tone} Overrides this month: ${ctx.overrideCount}. Review each override reason; patterns beat one-offs.\n\n${ctx.bucketLines.join("\n") || "No buckets yet."}\n\nNext: open Overview and fix the reddest bucket first.${OFFLINE_FOOTER}`;
+    return `${base}\n\n${tone} Overrides this month: ${ctx.overrideCount}. Review each override reason; patterns beat one-offs.\n\n${ctx.bucketLines.join("\n") || "No buckets yet."}${facts}\n\nNext: open Overview and fix the reddest bucket first.${OFFLINE_FOOTER}`;
   }
-  return `${base}\n\nI coach from your plan and numbers only. Ask about being on track, tithe, invest targets, or a full monthly summary.\n\n${ctx.bucketLines.slice(0, 6).join("\n")}${OFFLINE_FOOTER}`;
+  return `${base}\n\nI coach from your plan and numbers only. Ask about being on track, tithe, invest targets, or a full monthly summary.\n\n${ctx.bucketLines.slice(0, 6).join("\n")}${facts}${OFFLINE_FOOTER}`;
 }
 
 /** Short inbox message after an intentional overspend override */
