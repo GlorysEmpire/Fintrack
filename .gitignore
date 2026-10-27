@@ -16,3 +16,7 @@ apps/web/prisma/*.db-journal
 .vercel
 *.tsbuildinfo
 .aider*
+
+# Playwright output
+test-results/
+playwright-report/

@@ -59,6 +59,17 @@ export function daysInMonthKey(key: string): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
+/**
+ * The first moment of the calendar day (in the app's time zone) that `d` falls on.
+ * Used where a stored DATE means "that whole day": an account opened on the 27th
+ * counts everything from the very start of the 27th, however early it happened.
+ */
+export function startOfAppDay(d: Date): Date {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const shifted = d.getTime() + APP_UTC_OFFSET_MS;
+  return new Date(Math.floor(shifted / DAY_MS) * DAY_MS - APP_UTC_OFFSET_MS);
+}
+
 /** Whole days left in the month after today's date, in the app's time zone */
 export function daysLeftInMonth(now: Date = new Date()): number {
   const shifted = new Date(now.getTime() + APP_UTC_OFFSET_MS);

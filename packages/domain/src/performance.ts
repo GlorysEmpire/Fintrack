@@ -32,6 +32,7 @@ import {
   daysInMonthKey,
   monthKeyOf,
   replayMonthStates,
+  startOfAppDay,
   startOfMonthOffset,
   sumExpenses,
   sumIncome,
@@ -423,9 +424,10 @@ export function accountMovementForMonth(opts: {
       ).map((b) => [b.accountId, b])
     );
 
-  const openByEnd = accounts.filter((a) => t(a.openingDate) < monthEnd.getTime());
+  const openedOn = (a: LedgerAccount) => startOfAppDay(new Date(t(a.openingDate))).getTime();
+  const openByEnd = accounts.filter((a) => openedOn(a) < monthEnd.getTime());
   const end = asOf(monthEnd, openByEnd);
-  const openByStart = openByEnd.filter((a) => t(a.openingDate) < monthStart.getTime());
+  const openByStart = openByEnd.filter((a) => openedOn(a) < monthStart.getTime());
   const start = asOf(monthStart, openByStart);
 
   return openByEnd.map((a) => {

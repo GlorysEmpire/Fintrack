@@ -30,6 +30,7 @@ import {
   toMinor,
   type AccountBalance,
   type AccountKind,
+  startOfAppDay,
   type LedgerAccount,
 } from "@fintrack/domain";
 import type { Account } from "@prisma/client";
@@ -343,7 +344,7 @@ export async function assignUnassigned(
         userId,
         accountId: null,
         currency: account.currency,
-        date: { gte: account.openingDate },
+        date: { gte: startOfAppDay(account.openingDate) },
       },
       data: { accountId: id },
     });
@@ -369,7 +370,7 @@ export async function checkAccountForEvent(
   if (account.currency !== currency) {
     return `${account.name} holds ${account.currency}, but this is in ${currency}.`;
   }
-  if (date.getTime() < account.openingDate.getTime()) {
+  if (date.getTime() < startOfAppDay(account.openingDate).getTime()) {
     return `${account.name} opened on ${dateKeyInTimeZone(account.openingDate, APP_TIME_ZONE)}. A record dated earlier can not be recorded against it.`;
   }
   return null;
@@ -408,7 +409,7 @@ export async function accountHistory(
     prisma.account.findMany({ where: { userId }, select: { id: true, name: true } }),
   ]);
   const name = (accountId: string) => names.find((n) => n.id === accountId)?.name ?? null;
-  const opened = account.openingDate.getTime();
+  const opened = startOfAppDay(account.openingDate).getTime();
 
   type Raw = Omit<AccountEvent, "balanceAfter"> & { at: Date; created: Date };
   const raw: Raw[] = [];

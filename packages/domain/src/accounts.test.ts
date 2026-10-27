@@ -192,3 +192,22 @@ describe("small helpers", () => {
     assert.equal(isValidAmount(10.255), false);
   });
 });
+
+describe("an opening date means the whole of that day", () => {
+  // Opened on 27 Oct 2026, stored (as the app does) at noon UTC
+  const opened: LedgerAccount = { id: "a", kind: "asset", currency: "NGN", openingBalanceMinor: toMinor(1_000), openingDate: new Date("2026-10-27T12:00:00Z") };
+  const tx = (iso: string) => ({ accountId: "a", type: "i" as const, amount: 100, currency: "NGN", date: new Date(iso) });
+
+  it("counts a record from earlier that same day, however early", () => {
+    // 00:30 Lagos on the 27th is 23:30 UTC on the 26th: still the 27th in Lagos
+    for (const iso of ["2026-10-26T23:30:00Z", "2026-10-27T06:00:00Z", "2026-10-27T11:59:00Z"]) {
+      const rows = accountBalances([opened], [tx(iso)]);
+      assert.equal(rows[0].balanceMinor, toMinor(1_100), iso);
+    }
+  });
+
+  it("still ignores the day before", () => {
+    const rows = accountBalances([opened], [tx("2026-10-26T22:59:00Z")]); // 23:59 Lagos on the 26th
+    assert.equal(rows[0].balanceMinor, toMinor(1_000));
+  });
+});

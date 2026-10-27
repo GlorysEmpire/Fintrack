@@ -107,7 +107,11 @@ export interface LedgerAccount {
   openingDate: Date | string;
 }
 
+import { startOfAppDay } from "./money";
+
 const time = (d: Date | string) => (typeof d === "string" ? new Date(d) : d).getTime();
+/** An opening date means the whole of that day: events from its first moment count */
+const openedAt = (d: Date | string) => startOfAppDay(typeof d === "string" ? new Date(d) : d).getTime();
 
 export interface AccountBalance {
   accountId: string;
@@ -150,7 +154,7 @@ export function accountBalances(
       transfersOutMinor: 0,
       adjustmentsMinor: 0,
       eventCount: 0,
-      opened: time(a.openingDate),
+      opened: openedAt(a.openingDate),
       currency: a.currency,
       kind: a.kind,
       opening: a.openingBalanceMinor,

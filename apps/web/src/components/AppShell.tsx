@@ -82,6 +82,7 @@ export function AppShell({
           Base currency
           <select
             id="tb-ccy"
+            aria-label="Base currency"
             value={ccy}
             onChange={(e) => onCurrencyChange(e.target.value)}
           >
