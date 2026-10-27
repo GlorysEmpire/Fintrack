@@ -40,7 +40,7 @@ export default async function DashboardPage() {
     : {};
   const fx = parseFx(user.fxRates);
 
-  const [sources, allTxs, inboxUnread, layout, recurring] = await Promise.all([
+  const [sources, allTxs, inboxUnread, layout, recurring, activeAccounts] = await Promise.all([
     prisma.incomeSource.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
@@ -53,6 +53,10 @@ export default async function DashboardPage() {
     getUserDashboardLayout(user.id),
     prisma.recurringRule.findMany({
       where: { userId: user.id, active: true },
+    }),
+    prisma.account.findMany({
+      where: { userId: user.id, status: "active" },
+      orderBy: { name: "asc" },
     }),
   ]);
 
@@ -121,6 +125,12 @@ export default async function DashboardPage() {
       hasPassword={Boolean(user.passwordHash)}
       plan={plan}
       fx={fx}
+      accounts={activeAccounts.map((a) => ({
+        id: a.id,
+        name: a.name,
+        currency: a.currency,
+        kind: a.kind,
+      }))}
       sources={sources.map((s) => ({
         id: s.id,
         name: s.name,

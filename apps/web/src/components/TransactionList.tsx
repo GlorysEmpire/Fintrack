@@ -25,7 +25,7 @@ import {
 import { formatTxDate, toDateInputValue } from "@/lib/format-date";
 import type { TxRow } from "@/lib/tx-row";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { LogTransactionModal } from "./LogTransactionModal";
+import { LogTransactionModal, type AccountOption } from "./LogTransactionModal";
 import { Money } from "./Money";
 import { toast } from "@/components/ui/toast";
 
@@ -40,6 +40,7 @@ export function TransactionList({
   rows,
   plan,
   sources,
+  accounts = [],
   baseCurrency,
   fx,
   bucketRemaining,
@@ -49,6 +50,7 @@ export function TransactionList({
   rows: TxRow[];
   plan: BudgetPlan | null;
   sources: Source[];
+  accounts?: AccountOption[];
   baseCurrency: string;
   fx: Record<string, number>;
   bucketRemaining?: Record<string, number>;
@@ -207,6 +209,7 @@ export function TransactionList({
         onClose={() => setEditing(null)}
         plan={plan}
         sources={sources}
+        accounts={accounts}
         baseCurrency={baseCurrency}
         fx={fx}
         bucketRemaining={bucketRemaining}

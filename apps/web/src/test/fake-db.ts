@@ -377,6 +377,7 @@ export class FakeDb {
       reason: null,
       recurringRuleId: null,
       occurrenceDate: null,
+      accountId: null,
       date: new Date(),
       createdAt: new Date(),
     }),
@@ -397,6 +398,7 @@ export class FakeDb {
       active: true,
       lastRunAt: null,
       lastError: null,
+      accountId: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }),
@@ -422,6 +424,45 @@ export class FakeDb {
     this
   );
 
+  account = new Table(
+    "account",
+    () => ({
+      id: newId(),
+      institution: null,
+      currency: "NGN",
+      openingBalanceMinor: BigInt(0),
+      status: "active",
+      provider: null,
+      externalAccountId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }),
+    [],
+    this,
+    [["userId", "name"]]
+  );
+  transfer = new Table(
+    "transfer",
+    () => ({
+      id: newId(),
+      feeMinor: BigInt(0),
+      exchangeRate: null,
+      createdAt: new Date(),
+      note: null,
+      reference: null,
+      status: "posted",
+      source: "manual",
+    }),
+    [],
+    this
+  );
+  accountAdjustment = new Table(
+    "accountAdjustment",
+    () => ({ id: newId(), note: null, createdAt: new Date() }),
+    [],
+    this
+  );
+
   private get tables(): Table[] {
     return [
       this.user,
@@ -433,6 +474,9 @@ export class FakeDb {
       this.recurringRule,
       this.inboxMessage,
       this.aiMessage,
+      this.account,
+      this.transfer,
+      this.accountAdjustment,
     ];
   }
 

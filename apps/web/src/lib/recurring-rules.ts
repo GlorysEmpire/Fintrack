@@ -21,6 +21,7 @@ import {
   type RecurringCadence,
 } from "@fintrack/domain";
 import type { RecurringRule } from "@prisma/client";
+import { checkAccountForEvent } from "./accounts";
 import { prisma } from "./db";
 import { getUserPlan } from "./plan";
 import { withUserLock } from "./user-lock";
@@ -34,6 +35,8 @@ export type NewRuleInput = {
   bucketId?: string | null;
   sourceId?: string | null;
   note?: string | null;
+  /** Account the generated transactions are recorded against (optional) */
+  accountId?: string | null;
   cadence: RecurringCadence;
   dayOfMonth?: number | null;
   /** "YYYY-MM-DD", today or later. Omitted = today. */
@@ -134,6 +137,12 @@ export async function createRule(
     return invalid(`You can have up to ${MAX_RULES_PER_USER} recurring rules.`);
   }
 
+  const accountId = input.accountId || null;
+  if (accountId) {
+    const problem = await checkAccountForEvent(userId, accountId, input.currency, dateFromDateKey(startKey));
+    if (problem) return invalid(problem);
+  }
+
   const dayOfMonth = input.cadence === "monthly" ? input.dayOfMonth ?? null : null;
   const nextKey = nextOccurrenceOnOrAfter(startKey, input.cadence, dayOfMonth, startKey);
   const rule = await prisma.recurringRule.create({
@@ -144,6 +153,7 @@ export async function createRule(
       currency: input.currency,
       bucketId,
       sourceId,
+      accountId,
       note: input.note?.trim() || null,
       cadence: input.cadence,
       dayOfMonth,
@@ -196,6 +206,17 @@ export async function updateRule(
     );
     if (badTarget) return invalid(badTarget);
 
+    const currency = patch.currency ?? existing.currency;
+    const accountId =
+      patch.accountId !== undefined ? patch.accountId || null : existing.accountId;
+    if (
+      accountId &&
+      (accountId !== existing.accountId || currency !== existing.currency)
+    ) {
+      const problem = await checkAccountForEvent(userId, accountId, currency, dateFromDateKey(todayKey));
+      if (problem) return invalid(problem);
+    }
+
     const scheduleChanged =
       cadence !== existing.cadence ||
       dayOfMonth !== existing.dayOfMonth ||
@@ -221,9 +242,10 @@ export async function updateRule(
       where: { id: existing.id },
       data: {
         amount: patch.amount ?? existing.amount,
-        currency: patch.currency ?? existing.currency,
+        currency,
         bucketId,
         sourceId,
+        accountId,
         note: patch.note !== undefined ? patch.note?.trim() || null : existing.note,
         cadence,
         dayOfMonth,

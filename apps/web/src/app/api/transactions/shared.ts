@@ -28,6 +28,7 @@ export const createTransactionSchema = z
     note: shortText.optional().nullable(),
     reason: shortText.optional().nullable(),
     date: day.optional().nullable(),
+    accountId: id.optional().nullable(),
   })
   .strict();
 
@@ -42,6 +43,7 @@ export const updateTransactionSchema = z
     note: shortText.optional().nullable(),
     reason: shortText.optional().nullable(),
     date: day.optional().nullable(),
+    accountId: id.optional().nullable(),
   })
   .strict();
 

@@ -99,6 +99,14 @@ export function ResetFinTrack({
             : every income and expense you have recorded
           </li>
           <li>
+            <strong>
+              {count(counts.accounts, "account", "accounts")}
+            </strong>{" "}
+            and{" "}
+            <strong>{count(counts.transfers, "transfer", "transfers")}</strong>{" "}
+            between them
+          </li>
+          <li>
             <strong>Your plan</strong> and all its buckets, with every bucket
             balance and all carried-over money
           </li>

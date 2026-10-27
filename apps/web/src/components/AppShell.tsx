@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import {
   ArrowLeftRight,
   Inbox,
+  Landmark,
   LayoutDashboard,
   Settings,
   Sparkles,
@@ -23,6 +24,7 @@ const TABS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/income", label: "Income", icon: Wallet },
   { href: "/expenses", label: "Expenses", icon: ArrowLeftRight },
+  { href: "/accounts", label: "Accounts", icon: Landmark },
   { href: "/settings", label: "Plan", icon: Settings },
   { href: "/advisor", label: "Advisor", icon: Sparkles },
   { href: "/inbox", label: "Inbox", icon: Inbox },

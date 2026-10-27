@@ -20,13 +20,17 @@ export default async function ExpensesPage() {
 
   const start = startOfMonth();
 
-  const [plan, txs, inboxUnread] = await Promise.all([
+  const [plan, txs, inboxUnread, activeAccounts] = await Promise.all([
     getUserPlan(user.id),
     prisma.transaction.findMany({
       where: { userId: user.id, type: "e", date: { gte: start } },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     }),
     unreadCount(user.id),
+    prisma.account.findMany({
+      where: { userId: user.id, status: "active" },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -52,6 +56,12 @@ export default async function ExpensesPage() {
             rows={txs.map(toTxRow)}
             plan={plan}
             sources={[]}
+            accounts={activeAccounts.map((a) => ({
+              id: a.id,
+              name: a.name,
+              currency: a.currency,
+              kind: a.kind,
+            }))}
             baseCurrency={user.baseCurrency}
             fx={parseFx(user.fxRates)}
             serverNow={new Date().toISOString()}

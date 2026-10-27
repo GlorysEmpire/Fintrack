@@ -11,6 +11,8 @@ export type TxRow = {
   currency: string;
   bucketId: string | null;
   sourceId: string | null;
+  /** The account it was recorded against, or null (not assigned) */
+  accountId: string | null;
   category: string | null;
   note: string | null;
   reason: string | null;
@@ -30,6 +32,7 @@ export function toTxRow(t: Transaction): TxRow {
     currency: t.currency,
     bucketId: t.bucketId,
     sourceId: t.sourceId,
+    accountId: t.accountId,
     category: t.category,
     note: t.note,
     reason: t.reason,

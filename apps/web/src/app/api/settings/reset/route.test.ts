@@ -68,6 +68,22 @@ async function userWithEverything(extra: Partial<User> = {}) {
     data: { userId: user.id, kind: "override_coach", title: "t", body: "b", relatedTxId: spent.id },
   });
   await testDb.aiMessage.create({ data: { userId: user.id, role: "user", content: "am I on track?" } });
+  // Accounts hold money history too: two accounts, a transfer, an adjustment,
+  // and a transaction assigned to one of them
+  const opened = new Date("2026-01-01T12:00:00Z");
+  const bank = await testDb.account.create({
+    data: { userId: user.id, name: "GTBank", kind: "asset", type: "bank", openingBalanceMinor: BigInt(100_000), openingDate: opened },
+  });
+  const wallet = await testDb.account.create({
+    data: { userId: user.id, name: "OPay", kind: "asset", type: "wallet", openingDate: opened },
+  });
+  await testDb.transfer.create({
+    data: { userId: user.id, fromAccountId: bank.id, toAccountId: wallet.id, fromAmountMinor: BigInt(5_000), toAmountMinor: BigInt(5_000), date: new Date() },
+  });
+  await testDb.accountAdjustment.create({
+    data: { userId: user.id, accountId: bank.id, amountMinor: BigInt(-100), date: new Date() },
+  });
+  await testDb.transaction.updateMany({ where: { userId: user.id, type: "i" }, data: { accountId: bank.id } });
   await testDb.session.create({
     data: { userId: user.id, token: `tok-${user.id}`, expiresAt: new Date(Date.now() + 86_400_000) },
   });
@@ -76,7 +92,7 @@ async function userWithEverything(extra: Partial<User> = {}) {
 
 async function snapshot(userId: string) {
   const where = { userId };
-  const [user, transactions, plans, sources, rules, inbox, ai, sessions] = await Promise.all([
+  const [user, transactions, plans, sources, rules, inbox, ai, accounts, transfers, adjustments, sessions] = await Promise.all([
     testDb.user.findUnique({ where: { id: userId } }),
     testDb.transaction.count({ where }),
     testDb.budgetPlan.count({ where }),
@@ -84,17 +100,20 @@ async function snapshot(userId: string) {
     testDb.recurringRule.count({ where }),
     testDb.inboxMessage.count({ where }),
     testDb.aiMessage.count({ where }),
+    testDb.account.count({ where }),
+    testDb.transfer.count({ where }),
+    testDb.accountAdjustment.count({ where }),
     testDb.session.findMany({ where }),
   ]);
   return {
     user,
-    counts: { transactions, plans, sources, rules, inbox, ai },
+    counts: { transactions, plans, sources, rules, inbox, ai, accounts, transfers, adjustments },
     sessions: sessions.map((s) => s.token),
   };
 }
 
-const EVERYTHING = { transactions: 3, plans: 1, sources: 1, rules: 1, inbox: 1, ai: 1 };
-const NOTHING = { transactions: 0, plans: 0, sources: 0, rules: 0, inbox: 0, ai: 0 };
+const EVERYTHING = { transactions: 3, plans: 1, sources: 1, rules: 1, inbox: 1, ai: 1, accounts: 2, transfers: 1, adjustments: 1 };
+const NOTHING = { transactions: 0, plans: 0, sources: 0, rules: 0, inbox: 0, ai: 0, accounts: 0, transfers: 0, adjustments: 0 };
 
 describe("the confirmation words", () => {
   it("accepts the phrase, forgiving case and stray spaces, and nothing else", () => {
@@ -159,6 +178,8 @@ describe("POST /api/settings/reset — what a confirmed reset does", () => {
       recurringRules: 1,
       inboxMessages: 1,
       aiMessages: 1,
+      accounts: 2,
+      transfers: 1,
     });
 
     const res = await reset({ confirmation: RESET_CONFIRMATION_PHRASE });
@@ -173,6 +194,8 @@ describe("POST /api/settings/reset — what a confirmed reset does", () => {
       recurringRules: 1,
       inboxMessages: 1,
       aiMessages: 1,
+      accounts: 2,
+      transfers: 1,
     });
 
     expect((await snapshot(user.id)).counts).toEqual(NOTHING);

@@ -122,6 +122,7 @@ async function processOccurrence(
         bucketId: rule.type === "e" ? rule.bucketId : null,
         sourceId: rule.type === "i" ? rule.sourceId : null,
         note: rule.note || "Recurring",
+        accountId: rule.accountId,
         date: key,
         recurring: { ruleId: rule.id, occurrenceDate },
       },

@@ -30,31 +30,34 @@ enum HouseholdRole {
 // Someone who can sign in. Created on first successful OTP verify.
 // passwordHash is optional — OTP-only users keep null until they set a password.
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
+  id           String          @id @default(cuid())
+  email        String          @unique
   name         String?
   /// Argon2id PHC string. Null = OTP-only account (legacy / not set yet).
   passwordHash String?
-  baseCurrency String  @default("NGN")
+  baseCurrency String          @default("NGN")
   /// pending = must see onboarding · completed = has plan · skipped = no plan yet
-  onboarding   String  @default("pending")
+  onboarding   String          @default("pending")
   theme        ThemePreference @default(system)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
-  sessions      Session[]
-  otps          EmailOtp[]
-  plan          BudgetPlan?
-  transactions  Transaction[]
-  incomeSources IncomeSource[]
-  inbox         InboxMessage[]
-  aiMessages    AiMessage[]
-  recurringRules RecurringRule[]
+  sessions             Session[]
+  otps                 EmailOtp[]
+  plan                 BudgetPlan?
+  transactions         Transaction[]
+  incomeSources        IncomeSource[]
+  inbox                InboxMessage[]
+  aiMessages           AiMessage[]
+  recurringRules       RecurringRule[]
+  accounts             Account[]
+  transfers            Transfer[]
+  accountAdjustments   AccountAdjustment[]
   householdMemberships HouseholdMember[]
   /// JSON string of FX rates (NGN-denominated)
-  fxRates       String @default("{\"NGN\":1,\"USD\":1580,\"GBP\":1990,\"EUR\":1710}")
+  fxRates              String              @default("{\"NGN\":1,\"USD\":1580,\"GBP\":1990,\"EUR\":1710}")
   /// JSON: { order: string[], hidden: string[] } — dashboard section preferences
-  dashboardLayoutJson String @default("")
+  dashboardLayoutJson  String              @default("")
 }
 
 // Shared household (schema only — UI in a follow-up)
@@ -64,8 +67,8 @@ model Household {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members  HouseholdMember[]
-  plans    BudgetPlan[]
+  members      HouseholdMember[]
+  plans        BudgetPlan[]
   transactions Transaction[]
 }
 
@@ -84,17 +87,17 @@ model HouseholdMember {
 
 // AI / system accountability messages (override coaching, monthly review, etc.)
 model InboxMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// override_coach | monthly_review | plan_tip | system
-  kind      String   @default("system")
-  title     String
-  body      String
-  read      Boolean  @default(false)
+  kind        String   @default("system")
+  title       String
+  body        String
+  read        Boolean  @default(false)
   /// Optional link to a transaction that triggered the message
   relatedTxId String?
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
 }
@@ -140,23 +143,23 @@ model EmailOtp {
 
 // One plan per user for now (households come later)
 model BudgetPlan {
-  id                        String   @id @default(cuid())
-  userId                    String   @unique
-  user                      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                        String     @id @default(cuid())
+  userId                    String     @unique
+  user                      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Optional shared household (schema only — not wired in UI yet)
   householdId               String?
   household                 Household? @relation(fields: [householdId], references: [id], onDelete: SetNull)
   name                      String
   templateId                String?
-  emergencyCarryOverDefault Boolean  @default(true)
+  emergencyCarryOverDefault Boolean    @default(true)
   /// JSON array of PlanBucket from @fintrack/domain
   bucketsJson               String
   /// JSON map bucketId → opening balance from carry-over months
-  openingBalancesJson       String   @default("{}")
+  openingBalancesJson       String     @default("{}")
   /// YYYY-MM of the last month we packed (opening balances written). Null = never packed.
-  lastMonthClosed String?
-  createdAt                 DateTime @default(now())
-  updatedAt                 DateTime @updatedAt
+  lastMonthClosed           String?
+  createdAt                 DateTime   @default(now())
+  updatedAt                 DateTime   @updatedAt
 
   @@index([householdId])
 }
@@ -185,23 +188,23 @@ model IncomeSource {
 // migration once this version is the one that is live:
 //   ALTER TABLE "Transaction" DROP COLUMN IF EXISTS "overspend";
 model Transaction {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String         @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Optional shared household (schema only)
-  householdId String?
-  household   Household? @relation(fields: [householdId], references: [id], onDelete: SetNull)
+  householdId     String?
+  household       Household?     @relation(fields: [householdId], references: [id], onDelete: SetNull)
   /// "i" = income · "e" = expense
-  type      String
-  amount    Float
-  currency  String   @default("NGN")
-  bucketId  String?
-  category  String?
-  sourceId  String?
-  note      String?
+  type            String
+  amount          Float
+  currency        String         @default("NGN")
+  bucketId        String?
+  category        String?
+  sourceId        String?
+  note            String?
   /// User intentionally spent outside the "normal" bucket
-  override  Boolean  @default(false)
-  reason    String?
+  override        Boolean        @default(false)
+  reason          String?
   /// Set when created by a recurring rule expansion
   recurringRuleId String?
   recurringRule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
@@ -209,15 +212,20 @@ model Transaction {
   /// With recurringRuleId it is unique, so one occurrence can only ever be
   /// recorded once, however many times the job runs. Null for everything else.
   occurrenceDate  DateTime?
+  /// Where the money was held or paid from. Null = not assigned to an account
+  /// (all history from before accounts existed). Never guessed or back-filled.
+  accountId       String?
+  account         Account?       @relation(fields: [accountId], references: [id], onDelete: NoAction)
   /// When it happened (the user may file a transaction under an earlier day)
-  date      DateTime @default(now())
+  date            DateTime       @default(now())
   /// When it was recorded. Starts the edit window; never set by the client.
-  createdAt DateTime @default(now())
+  createdAt       DateTime       @default(now())
 
   @@unique([recurringRuleId, occurrenceDate])
   @@index([userId, date])
   @@index([householdId])
   @@index([recurringRuleId])
+  @@index([accountId])
 }
 
 // Recurring income/expense rules expanded by daily cron
@@ -231,6 +239,8 @@ model RecurringRule {
   currency   String           @default("NGN")
   bucketId   String?
   sourceId   String?
+  /// Account the generated transactions are recorded against (optional)
+  accountId  String?
   note       String?
   cadence    RecurringCadence
   /// 1–31 for monthly; ignored for daily/weekly
@@ -248,4 +258,92 @@ model RecurringRule {
   transactions Transaction[]
 
   @@index([userId, active, nextRunAt])
+}
+
+// Where money is held (asset) or where a debt sits (liability). The balance is
+// NEVER stored: it is derived from the opening balance and the events dated on
+// or after the opening date (see packages/domain/src/accounts.ts). Accounts are
+// archived, never deleted, while history refers to them.
+model Account {
+  id                  String   @id @default(cuid())
+  userId              String
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                String
+  /// "asset" | "liability"
+  kind                String
+  /// bank | cash | wallet | savings | investment | credit_card | loan | other_asset | other_liability
+  type                String
+  institution         String?
+  currency            String   @default("NGN")
+  /// Signed minor units (kobo/cents). A debt is negative: owing 20,000 is -2000000.
+  openingBalanceMinor BigInt   @default(0)
+  /// Events before this moment are already inside the opening balance
+  openingDate         DateTime
+  /// active | archived | disconnected
+  status              String   @default("active")
+  /// For future bank integrations; unused today
+  provider            String?
+  externalAccountId   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  transactions Transaction[]
+  transfersOut Transfer[]          @relation("TransferFrom")
+  transfersIn  Transfer[]          @relation("TransferTo")
+  adjustments  AccountAdjustment[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+// Money moved between two of the user's own accounts. ONE row is both sides of
+// the movement, so the two sides can never drift apart and creating it is
+// atomic by nature. A transfer is never income and never spending.
+model Transfer {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccountId   String
+  fromAccount     Account  @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: NoAction)
+  toAccountId     String
+  toAccount       Account  @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: NoAction)
+  /// Minor units that left the source, in the source's currency
+  fromAmountMinor BigInt
+  /// Minor units that arrived, in the destination's currency (stated, never assumed)
+  toAmountMinor   BigInt
+  /// Extra charge taken from the source account, in its currency
+  feeMinor        BigInt   @default(0)
+  /// Informational only (destination units per source unit); never used in arithmetic
+  exchangeRate    Float?
+  /// The day it happened
+  date            DateTime
+  /// When it was recorded; starts the edit window
+  createdAt       DateTime @default(now())
+  note            String?
+  reference       String?
+  /// posted (more later, for imports: pending)
+  status          String   @default("posted")
+  /// manual (later: import)
+  source          String   @default("manual")
+
+  @@index([userId, date])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+}
+
+// A correction so a derived balance matches the real one. Not income, not spending.
+model AccountAdjustment {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  /// Signed minor units added to the balance
+  amountMinor BigInt
+  date        DateTime
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([userId])
 }

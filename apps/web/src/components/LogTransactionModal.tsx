@@ -39,11 +39,21 @@ type Source = {
   currency: string;
 };
 
+export type AccountOption = {
+  id: string;
+  name: string;
+  currency: string;
+  /** Debts (cards, loans) are marked so the user knows spending raises what is owed */
+  kind: string;
+};
+
 type Props = {
   open: boolean;
   onClose: () => void;
   plan: BudgetPlan | null;
   sources: Source[];
+  /** The user's active accounts; omit if there are none */
+  accounts?: AccountOption[];
   baseCurrency: string;
   fx: Record<string, number>;
   /** Optional live remaining by bucket id (base currency, this month) for warnings */
@@ -61,6 +71,7 @@ export function LogTransactionModal({
   onClose,
   plan,
   sources,
+  accounts = [],
   baseCurrency,
   fx,
   bucketRemaining = {},
@@ -78,6 +89,7 @@ export function LogTransactionModal({
   const [bucketId, setBucketId] = useState("");
   const [category, setCategory] = useState("food");
   const [note, setNote] = useState("");
+  const [accountId, setAccountId] = useState("");
   const [dateKey, setDateKey] = useState("");
   const [todayKey, setTodayKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +120,7 @@ export function LogTransactionModal({
       setBucketId(editing.bucketId || "");
       setCategory(editing.category || "food");
       setNote(editing.note || "");
+      setAccountId(editing.accountId || "");
       setDateKey(toDateInputValue(editing.date));
       return;
     }
@@ -120,8 +133,17 @@ export function LogTransactionModal({
     setBucketId(active.find((b) => b.id === "spend")?.id || active[0]?.id || "");
     setCategory("food");
     setNote("");
+    setAccountId("");
     setDateKey(today);
   }, [open, editing, base, sources, plan]);
+
+  // An account holds one currency, so only those in the chosen currency apply
+  const accountChoices = accounts.filter((a) => a.currency === currency);
+  useEffect(() => {
+    if (accountId && !accountChoices.some((a) => a.id === accountId)) {
+      setAccountId("");
+    }
+  }, [accountChoices, accountId]);
 
   const amtNum = parseFloat(amount) || 0;
   const amountBase = amountInBase(amtNum, currency, baseCurrency, fx);
@@ -245,6 +267,7 @@ export function LogTransactionModal({
         currency,
         note: note.trim() || null,
         date: dateKey || null,
+        accountId: accountId || null,
       };
       if (!isEdit) payload.type = type;
 
@@ -595,6 +618,32 @@ export function LogTransactionModal({
                     )}
                   </div>
                 )}
+              </>
+            )}
+
+            {accountChoices.length > 0 && (
+              <>
+                <label className="mlbl" htmlFor="tx-account">
+                  Account (optional)
+                </label>
+                <select
+                  id="tx-account"
+                  className="minp"
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                >
+                  <option value="">Not assigned to an account</option>
+                  {accountChoices.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {a.kind === "liability"
+                        ? type === "e"
+                          ? " (debt: raises what you owe)"
+                          : " (debt: lowers what you owe)"
+                        : ""}
+                    </option>
+                  ))}
+                </select>
               </>
             )}
 

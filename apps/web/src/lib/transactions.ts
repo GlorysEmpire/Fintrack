@@ -30,6 +30,7 @@ import {
   type ExpenseFriction,
   type MoneyTx,
 } from "@fintrack/domain";
+import { checkAccountForEvent } from "./accounts";
 import { prisma } from "./db";
 import { APP_TIME_ZONE } from "./format-date";
 import { createOverrideInboxMessage } from "./inbox";
@@ -54,6 +55,8 @@ export type NewTransactionInput = {
   reason?: string | null;
   /** "YYYY-MM-DD" in the app's time zone. Omitted = now. */
   date?: string | null;
+  /** The account the money went into or came out of. Omitted = not assigned. */
+  accountId?: string | null;
   /**
    * Set only by the recurring job (never accepted from a request body): which
    * occurrence of which rule this is. The database refuses a second one.
@@ -335,6 +338,12 @@ async function createUnlocked(
   });
   if (!when.ok) return invalid(when.error);
 
+  const accountId = input.accountId || null;
+  if (accountId) {
+    const problem = await checkAccountForEvent(user.id, accountId, input.currency, when.date);
+    if (problem) return invalid(problem);
+  }
+
   // Income: optional source; no friction
   if (input.type === "i") {
     const sourceId = input.sourceId || null;
@@ -350,6 +359,7 @@ async function createUnlocked(
         sourceId,
         note: clean(input.note) || null,
         date: when.date,
+        accountId,
         recurringRuleId: input.recurring?.ruleId ?? null,
         occurrenceDate: input.recurring?.occurrenceDate ?? null,
       },
@@ -384,6 +394,7 @@ async function createUnlocked(
       reason: check.reason || null,
       override: check.cross,
       date: when.date,
+      accountId,
       recurringRuleId: input.recurring?.ruleId ?? null,
       occurrenceDate: input.recurring?.occurrenceDate ?? null,
     },
@@ -443,6 +454,18 @@ async function updateUnlocked(
   const note =
     patch.note !== undefined ? clean(patch.note) : clean(existing.note);
 
+  const accountId =
+    patch.accountId !== undefined ? patch.accountId || null : existing.accountId;
+  if (
+    accountId &&
+    (accountId !== existing.accountId ||
+      currency !== existing.currency ||
+      date.getTime() !== existing.date.getTime())
+  ) {
+    const problem = await checkAccountForEvent(user.id, accountId, currency, date);
+    if (problem) return invalid(problem);
+  }
+
   if (existing.type === "i") {
     const sourceId =
       patch.sourceId !== undefined ? patch.sourceId || null : existing.sourceId;
@@ -455,7 +478,7 @@ async function updateUnlocked(
     }
     const transaction = await prisma.transaction.update({
       where: { id: existing.id, userId: user.id },
-      data: { amount, currency, sourceId, note: note || null, date },
+      data: { amount, currency, sourceId, note: note || null, date, accountId },
     });
     return { status: "ok", transaction, crossBucket: false };
   }
@@ -490,6 +513,7 @@ async function updateUnlocked(
       reason: check.reason || null,
       override: check.cross,
       date,
+      accountId,
     },
   });
 

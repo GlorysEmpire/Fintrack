@@ -24,7 +24,7 @@ import {
   type WaterfallResult,
   visibleSections,
 } from "@fintrack/domain";
-import { LogTransactionModal } from "./LogTransactionModal";
+import { LogTransactionModal, type AccountOption } from "./LogTransactionModal";
 import { TransactionList } from "./TransactionList";
 import { DashboardCharts } from "./DashboardCharts";
 import { DashboardCustomize } from "./DashboardCustomize";
@@ -54,6 +54,7 @@ type Props = {
   plan: BudgetPlan | null;
   fx: Record<string, number>;
   sources: Source[];
+  accounts?: AccountOption[];
   snapshot: {
     income: number;
     expenses: number;
@@ -93,6 +94,7 @@ export function DashboardClient(props: Props) {
     plan,
     fx,
     sources,
+    accounts = [],
     snapshot,
     totals,
     allTimeBuckets,
@@ -183,6 +185,7 @@ export function DashboardClient(props: Props) {
   const txListProps = {
     plan,
     sources,
+    accounts,
     baseCurrency,
     fx,
     bucketRemaining,
@@ -678,6 +681,7 @@ export function DashboardClient(props: Props) {
         onClose={() => setModalOpen(false)}
         plan={plan}
         sources={sources}
+        accounts={accounts}
         baseCurrency={baseCurrency}
         fx={fx}
         bucketRemaining={bucketRemaining}
