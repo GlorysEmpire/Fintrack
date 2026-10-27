@@ -26,6 +26,7 @@ import { GET as listAccounts, POST as createAccountRoute } from "./route";
 import { PATCH as patchAccount } from "./[id]/route";
 import { POST as adjustRoute } from "./[id]/adjust/route";
 import { POST as assignRoute } from "./[id]/assign/route";
+import { GET as historyRoute } from "./[id]/history/route";
 import { GET as listTransfers, POST as createTransferRoute } from "../transfers/route";
 import { DELETE as deleteTransfer } from "../transfers/[id]/route";
 import { POST as postTransaction } from "../transactions/route";
@@ -42,6 +43,7 @@ const adjust = (id: string, body: unknown) => adjustRoute(jsonRequest("POST", bo
 const assign = (id: string, body: unknown = { confirm: true }) => assignRoute(jsonRequest("POST", body), params(id));
 const transfer = (body: Record<string, unknown>) => createTransferRoute(jsonRequest("POST", body));
 const removeTransfer = (id: string) => deleteTransfer(jsonRequest("DELETE"), params(id));
+const history = (id: string) => historyRoute(jsonRequest("GET"), params(id));
 const logTx = (body: Record<string, unknown>) =>
   postTransaction(jsonRequest("POST", { currency: "NGN", ...body }));
 
@@ -483,5 +485,50 @@ describe("recurring rules and accounts", () => {
     expect(summary.skipped).toBeGreaterThan(0);
     expect(await testDb.transaction.count({ where: { recurringRuleId: later.id } })).toBe(0);
     expect((await testDb.inboxMessage.findMany({ where: { userId: user.id } })).some((m) => /skipped/i.test(m.title))).toBe(true);
+  });
+});
+
+describe("account history: where the money came from and where it went", () => {
+  it("lists every movement newest first, with a running balance that ends at the real balance", async () => {
+    const user = await signedIn();
+    await withPlanAndIncome(user.id);
+    const bank = await create({ name: "Bank", openingBalance: 10_000 });
+    const cash = await create({ name: "Cash" });
+    await logTx({ type: "i", amount: 100_000, accountId: bank.id, date: "2026-02-01", note: "salary" });
+    await logTx({ type: "e", amount: 1_250.5, accountId: bank.id, bucketId: "spend", category: "food", date: "2026-02-03" });
+    await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 2_000, fee: 25, date: "2026-02-05", note: "ATM" });
+    await adjust(bank.id, { actualBalance: 107_000, note: "reconciled" });
+
+    const body = await (await history(bank.id)).json();
+    expect(body.events.map((e: { kind: string }) => e.kind)).toEqual(["adjustment", "transfer_out", "expense", "income"]);
+    const out = body.events.find((e: { kind: string }) => e.kind === "transfer_out");
+    expect(out).toMatchObject({ amount: -2_000, fee: 25, counterparty: "Cash", note: "ATM" });
+    // the balance after the newest event is the balance the account reports
+    expect(body.events[0].balanceAfter).toBe(107_000);
+    expect((await accountsNow()).byName("Bank").balance).toBe(107_000);
+    // and each step adds up: 10,000 + 100,000 − 1,250.50 − 2,000 − 25
+    expect(out.balanceAfter).toBe(106_724.5);
+    expect(body.total).toBe(4);
+
+    const cashBody = await (await history(cash.id)).json();
+    expect(cashBody.events).toMatchObject([{ kind: "transfer_in", amount: 2_000, counterparty: "Bank", balanceAfter: 2_000 }]);
+  });
+
+  it("leaves out anything dated before the account opened", async () => {
+    const user = await signedIn();
+    await seedTx(user.id, { type: "i", amount: 99, date: new Date("2025-06-01T12:00:00Z") });
+    const a = await create({ name: "Main", openingBalance: 100 });
+    // assigned directly to prove the filter, though the app would refuse to record it
+    await testDb.transaction.updateMany({ where: { userId: user.id }, data: { accountId: a.id } });
+    expect((await (await history(a.id)).json()).events).toEqual([]);
+  });
+
+  it("is private to its owner", async () => {
+    const other = await createUser();
+    const theirs = await testDb.account.create({ data: { userId: other.id, name: "Theirs", kind: "asset", type: "bank", openingDate: new Date("2026-01-01T12:00:00Z") } });
+    await signedIn();
+    expect((await history(theirs.id)).status).toBe(404);
+    signIn(null);
+    expect((await history(theirs.id)).status).toBe(401);
   });
 });

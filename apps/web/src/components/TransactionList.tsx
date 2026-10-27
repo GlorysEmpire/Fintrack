@@ -132,6 +132,11 @@ export function TransactionList({
                   {bucket?.archived && (
                     <span className="pill tx-pill tx-pill-muted">archived bucket</span>
                   )}
+                  {t.accountId && (
+                    <span className="pill tx-pill tx-pill-muted">
+                      {accounts.find((a) => a.id === t.accountId)?.name ?? "archived account"}
+                    </span>
+                  )}
                 </div>
                 <div className="tx-meta">
                   {formatTxDate(t.date)}

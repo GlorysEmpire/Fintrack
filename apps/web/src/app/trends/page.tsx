@@ -106,7 +106,7 @@ export default async function TrendsPage() {
 
           <div className="sec">Month by month</div>
           <div className="card" style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
               <caption className="muted" style={{ textAlign: "left", fontSize: 12, paddingBottom: 6 }}>
                 Amounts in {user.baseCurrency}. Newest month first.
               </caption>
@@ -119,6 +119,7 @@ export default async function TrendsPage() {
                   <th style={th} scope="col">Surplus</th>
                   <th style={th} scope="col">Plan followed</th>
                   <th style={th} scope="col">Retained</th>
+                  <th style={th} scope="col">Moved to savings</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,10 +184,28 @@ export default async function TrendsPage() {
                         </div>
                       )}
                     </td>
+                    <td style={td}>
+                      {m.movedToSavings === 0 && m.movedFromSavings === 0 ? (
+                        "—"
+                      ) : (
+                        <>
+                          {money(m.movedToSavings)}
+                          {m.movedFromSavings > 0 && (
+                            <div className="muted" style={{ fontSize: 12 }}>
+                              {money(m.movedFromSavings)} taken back out
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+              &ldquo;Moved to savings&rdquo; counts transfers into your savings and investment accounts. Setting
+              money aside is not spending, and it does not by itself show that the account grew.
+            </p>
             {anyConverted && (
               <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
                 Some months include other currencies, converted at your saved exchange rates.

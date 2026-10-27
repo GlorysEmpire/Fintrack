@@ -11,7 +11,7 @@ import { ACCOUNT_TYPES, kindOfType, type CurrencyCode } from "@fintrack/domain";
 import { formatExact as money } from "@/lib/money-format";
 import { toDateInputValue } from "@/lib/format-date";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import type { AccountView } from "@/lib/accounts";
+import type { AccountEvent, AccountView } from "@/lib/accounts";
 import type { TransferView } from "@/lib/transfers";
 
 const CURRENCIES: CurrencyCode[] = ["NGN", "USD", "GBP", "EUR"];
@@ -59,6 +59,9 @@ export function AccountsManager({
   const [tDate, setTDate] = useState(today);
   const [tNote, setTNote] = useState("");
   const [tRef, setTRef] = useState("");
+  // Account history
+  const [historyId, setHistoryId] = useState<string | null>(null);
+  const [history, setHistory] = useState<AccountEvent[] | null>(null);
   // Assign existing transactions
   const [assignTo, setAssignTo] = useState<AccountView | null>(null);
   const [assignId, setAssignId] = useState("");
@@ -143,6 +146,17 @@ export function AccountsManager({
       setTRef("");
       setPanel(null);
     }
+  }
+
+  async function toggleHistory(id: string) {
+    if (historyId === id) {
+      setHistoryId(null);
+      return;
+    }
+    setHistoryId(id);
+    setHistory(null);
+    const data = await call(`/api/accounts/${id}/history`, "GET");
+    if (data) setHistory(data.events as AccountEvent[]);
   }
 
   async function confirmAssign() {
@@ -310,6 +324,14 @@ export function AccountsManager({
               <button
                 type="button"
                 className="btn btn-ghost"
+                aria-expanded={historyId === a.id}
+                onClick={() => void toggleHistory(a.id)}
+              >
+                {historyId === a.id ? "Hide history" : "History"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
                 disabled={busy}
                 onClick={() =>
                   void call(`/api/accounts/${a.id}`, "PATCH", {
@@ -321,6 +343,58 @@ export function AccountsManager({
               </button>
             </div>
           </div>
+
+          {historyId === a.id && (
+            <div style={{ marginTop: 12 }}>
+              {history === null ? (
+                <p className="muted">Loading…</p>
+              ) : history.length === 0 ? (
+                <p className="muted">Nothing has been recorded against this account yet.</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
+                    <caption className="muted" style={{ textAlign: "left", fontSize: 12 }}>
+                      Newest first. The balance is after each movement.
+                    </caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" style={{ textAlign: "left", padding: "4px 6px" }}>Date</th>
+                        <th scope="col" style={{ textAlign: "left", padding: "4px 6px" }}>What</th>
+                        <th scope="col" style={{ textAlign: "right", padding: "4px 6px" }}>Amount</th>
+                        <th scope="col" style={{ textAlign: "right", padding: "4px 6px" }}>Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((e, i) => (
+                        <tr key={i} style={{ borderTop: "1px solid var(--border, rgba(128,128,128,.2))" }}>
+                          <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{e.date}</td>
+                          <td style={{ padding: "4px 6px" }}>
+                            {{
+                              income: "Income",
+                              expense: "Expense",
+                              transfer_in: `Transfer in from ${e.counterparty ?? "another account"}`,
+                              transfer_out: `Transfer out to ${e.counterparty ?? "another account"}`,
+                              adjustment: "Balance adjustment",
+                            }[e.kind]}
+                            {e.note ? <span className="muted"> · {e.note}</span> : null}
+                            {e.fee > 0 ? <span className="muted"> · fee {money(e.fee, a.currency)}</span> : null}
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                            {e.amount < 0 ? "−" : "+"}
+                            {money(e.amount, a.currency)}
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
+                            {e.balanceAfter < 0 ? "−" : ""}
+                            {money(e.balanceAfter, a.currency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {panel && (panel.mode === "rename" || panel.mode === "adjust") && panel.account.id === a.id && (
             <form onSubmit={savePanel} style={{ display: "grid", gap: 8, marginTop: 12 }}>

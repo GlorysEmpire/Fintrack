@@ -5,6 +5,7 @@ import {
   compareWithPreviousMonth,
   expenseRateTrend,
   monthlyPerformance,
+  savingsFlowsByMonth,
   type MonthPerformance,
   type PerfTx,
 } from "./performance";
@@ -193,7 +194,7 @@ describe("expenseRateTrend", () => {
   const row = (month: string, rate: number | null, inProgress = false): MonthPerformance => ({
     month, inProgress, daysElapsed: 30, daysInMonth: 30, hasRecords: true, converted: false,
     income: 100, expenses: rate ?? 0, surplus: 0, expenseRate: rate, rateNote: "ok", remainingShare: null,
-    planAdherence: null, bucketsBelowZero: 0, crossBucketSpends: 0, retained: 0, retainedChange: null,
+    planAdherence: null, bucketsBelowZero: 0, crossBucketSpends: 0, retained: 0, movedToSavings: 0, movedFromSavings: 0, retainedChange: null,
   });
 
   it("needs enough finished months", () => {
@@ -274,5 +275,59 @@ describe("accountMovementForMonth", () => {
     assert.equal(l.netMinor, 0);
     const aug = accountMovementForMonth({ accounts: [bank, late], txs: [], transfers: [], adjustments: [], month: "2026-08" });
     assert.equal(aug.some((m) => m.accountId === "late"), false);
+  });
+});
+
+describe("savings and investment contributions come only from transfers", () => {
+  const accounts = [
+    { id: "bank", type: "bank", currency: "NGN" },
+    { id: "save", type: "savings", currency: "NGN" },
+    { id: "save2", type: "savings", currency: "NGN" },
+    { id: "inv", type: "investment", currency: "USD" },
+    { id: "card", type: "credit_card", currency: "NGN" },
+  ];
+  const tr = (from: string, to: string, amount: number, date: Date, toAmount = amount) => ({
+    fromAccountId: from, toAccountId: to, fromAmountMinor: toMinor(amount), toAmountMinor: toMinor(toAmount), feeMinor: 0, date,
+  });
+
+  it("counts money moved into savings, and back out, per month", () => {
+    const flows = savingsFlowsByMonth({
+      accounts, base: "NGN", fx,
+      transfers: [
+        tr("bank", "save", 30_000, at(2026, 9, 5)),
+        tr("bank", "save", 10_000, at(2026, 9, 20)),
+        tr("save", "bank", 5_000, at(2026, 9, 25)),
+        tr("bank", "save", 1_000, at(2026, 10, 2)),
+      ],
+    });
+    assert.deepEqual(flows.get("2026-09"), { movedIn: 40_000, movedOut: 5_000 });
+    assert.deepEqual(flows.get("2026-10"), { movedIn: 1_000, movedOut: 0 });
+  });
+
+  it("moving between two savings accounts, or paying a card, is not a contribution", () => {
+    const flows = savingsFlowsByMonth({
+      accounts, base: "NGN", fx,
+      transfers: [tr("save", "save2", 9_000, at(2026, 9, 5)), tr("bank", "card", 7_000, at(2026, 9, 6))],
+    });
+    assert.equal(flows.size, 0);
+  });
+
+  it("an investment account in another currency is valued at what arrived, at the saved rate", () => {
+    const flows = savingsFlowsByMonth({
+      accounts, base: "NGN", fx,
+      transfers: [tr("bank", "inv", 158_000, at(2026, 9, 5), 100)], // $100 arrived
+    });
+    assert.equal(flows.get("2026-09")!.movedIn, 158_000);
+  });
+
+  it("shows up on the month's row, and is not spending", () => {
+    const savingsFlows = savingsFlowsByMonth({ accounts, base: "NGN", fx, transfers: [tr("bank", "save", 30_000, at(2026, 9, 5))] });
+    const rows = monthlyPerformance({
+      txs: [inc(100_000, at(2026, 9, 2)), exp(5_000, at(2026, 9, 3))], plan, base: "NGN", fx, now: NOW, savingsFlows,
+    });
+    const sep = rows.find((r) => r.month === "2026-09")!;
+    assert.equal(sep.movedToSavings, 30_000);
+    assert.equal(sep.expenses, 5_000); // setting money aside did not change spending
+    assert.equal(sep.expenseRate, 5);
   });
 });

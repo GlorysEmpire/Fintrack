@@ -87,4 +87,25 @@ describe("GET /api/performance", () => {
     const body = await get();
     expect(body.accountMovement).toEqual([]);
   });
+
+  it("money moved into a savings account shows as 'moved to savings', and is not spending", async () => {
+    const user = await createUser();
+    signIn(user);
+    await seedPlan(user.id);
+    await seedTx(user.id, { type: "i", amount: 100_000, date: midMonth(0, new Date(), 1) });
+    const make = async (name: string, type: string, openingBalance = 0) =>
+      (await (await createAccount(jsonRequest("POST", { name, type, openingBalance, openingDate: OPEN }))).json()).account.id;
+    const bank = await make("Bank", "bank", 80_000);
+    const vault = await make("Vault", "savings");
+    const before = (await get()).months.at(-1);
+
+    await createTransfer(jsonRequest("POST", { fromAccountId: bank, toAccountId: vault, amount: 25_000 }));
+    const after = (await get()).months.at(-1);
+
+    expect(after.movedToSavings).toBe(25_000);
+    expect(after.movedFromSavings).toBe(0);
+    expect(after.expenses).toBe(before.expenses);
+    expect(after.expenseRate).toBe(before.expenseRate);
+  });
 });
+

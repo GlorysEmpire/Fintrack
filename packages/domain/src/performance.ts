@@ -27,6 +27,7 @@
 import type { BudgetPlan } from "./types";
 import {
   MONEY_EPSILON,
+  amountInBase,
   appDayOfMonth,
   daysInMonthKey,
   monthKeyOf,
@@ -38,6 +39,7 @@ import {
 } from "./money";
 import {
   accountBalances,
+  fromMinor,
   type AccountBalance,
   type LedgerAccount,
   type LedgerAdjustment,
@@ -90,6 +92,10 @@ export interface MonthPerformance {
   crossBucketSpends: number;
   /** Money sitting in carry-over buckets at month end (base currency) */
   retained: number;
+  /** Moved from other accounts INTO savings/investment accounts this month (transfers; base currency) */
+  movedToSavings: number;
+  /** Moved OUT of savings/investment accounts to other accounts this month */
+  movedFromSavings: number;
   /** Change in retained money from the month before; null for the first month */
   retainedChange: number | null;
 }
@@ -128,6 +134,8 @@ export function monthlyPerformance(opts: {
   now?: Date;
   /** How many months to return (default 12) */
   months?: number;
+  /** Savings/investment movements per month, from savingsFlowsByMonth() */
+  savingsFlows?: Map<string, SavingsFlow>;
 }): MonthPerformance[] {
   const { txs, plan, base, fx } = opts;
   const now = opts.now ?? new Date();
@@ -193,12 +201,61 @@ export function monthlyPerformance(opts: {
       bucketsBelowZero: below,
       crossBucketSpends: monthTxs.filter((t) => t.type === "e" && t.override).length,
       retained,
+      movedToSavings: opts.savingsFlows?.get(key)?.movedIn ?? 0,
+      movedFromSavings: opts.savingsFlows?.get(key)?.movedOut ?? 0,
       retainedChange: previousRetained === null ? null : retained - previousRetained,
     };
     previousRetained = retained;
     if (shown.has(key)) rows.push(row);
   }
   return rows;
+}
+
+/* ─── Savings and investment contributions ────────────────────────── */
+
+export interface SavingsFlow {
+  /** Base currency */
+  movedIn: number;
+  movedOut: number;
+}
+
+const SAVINGS_TYPES = new Set(["savings", "investment"]);
+
+/**
+ * Money the user moved into savings/investment accounts, and back out, per
+ * month ("YYYY-MM"). Only TRANSFERS count: that is the one reliable record
+ * that money was set aside. Moving it is not spending, and it does not prove
+ * the account grew (it may lose value, or be withdrawn later). Transfers
+ * between two savings accounts are not a contribution.
+ */
+export function savingsFlowsByMonth(opts: {
+  accounts: { id: string; type: string; currency: string }[];
+  transfers: LedgerTransfer[];
+  base: string;
+  fx: Record<string, number>;
+}): Map<string, SavingsFlow> {
+  const byId = new Map(opts.accounts.map((a) => [a.id, a]));
+  const out = new Map<string, SavingsFlow>();
+  const entry = (key: string) => {
+    const e = out.get(key) ?? { movedIn: 0, movedOut: 0 };
+    out.set(key, e);
+    return e;
+  };
+  for (const t of opts.transfers) {
+    const from = byId.get(t.fromAccountId);
+    const to = byId.get(t.toAccountId);
+    if (!from || !to) continue;
+    const fromSaves = SAVINGS_TYPES.has(from.type);
+    const toSaves = SAVINGS_TYPES.has(to.type);
+    if (fromSaves === toSaves) continue;
+    const key = monthKeyOf(t.date);
+    if (toSaves) {
+      entry(key).movedIn += amountInBase(fromMinor(t.toAmountMinor), to.currency, opts.base, opts.fx);
+    } else {
+      entry(key).movedOut += amountInBase(fromMinor(t.fromAmountMinor), from.currency, opts.base, opts.fx);
+    }
+  }
+  return out;
 }
 
 /* ─── Comparing like with like ────────────────────────────────────── */

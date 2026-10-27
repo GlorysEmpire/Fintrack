@@ -11,6 +11,7 @@ import {
   fromMinor,
   monthKeyOf,
   monthlyPerformance,
+  savingsFlowsByMonth,
   startOfMonthOffset,
   type AccountKind,
   type ExpenseRateTrend,
@@ -93,7 +94,22 @@ export async function getPerformance(
     override: t.override,
   }));
 
-  const months = monthlyPerformance({ txs, plan, base, fx, now });
+  const ledgerTransfers = transfers.map((t) => ({
+    fromAccountId: t.fromAccountId,
+    toAccountId: t.toAccountId,
+    fromAmountMinor: Number(t.fromAmountMinor),
+    toAmountMinor: Number(t.toAmountMinor),
+    feeMinor: Number(t.feeMinor),
+    date: t.date,
+  }));
+  const savingsFlows = savingsFlowsByMonth({
+    accounts: accounts.map((a) => ({ id: a.id, type: a.type, currency: a.currency })),
+    transfers: ledgerTransfers,
+    base,
+    fx,
+  });
+
+  const months = monthlyPerformance({ txs, plan, base, fx, now, savingsFlows });
   const comparison = compareWithPreviousMonth({ txs, base, fx, now });
   const trend = expenseRateTrend(months);
 
@@ -113,14 +129,6 @@ export async function getPerformance(
       currency: t.currency,
       date: t.date,
     }));
-  const ledgerTransfers = transfers.map((t) => ({
-    fromAccountId: t.fromAccountId,
-    toAccountId: t.toAccountId,
-    fromAmountMinor: Number(t.fromAmountMinor),
-    toAmountMinor: Number(t.toAmountMinor),
-    feeMinor: Number(t.feeMinor),
-    date: t.date,
-  }));
   const ledgerAdjustments = adjustments.map((a) => ({
     accountId: a.accountId,
     amountMinor: Number(a.amountMinor),

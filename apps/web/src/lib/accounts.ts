@@ -377,3 +377,105 @@ export async function checkAccountForEvent(
   }
   return null;
 }
+
+export type AccountEvent = {
+  kind: "income" | "expense" | "transfer_in" | "transfer_out" | "adjustment";
+  date: string;
+  /** Effect on the balance, in major units (negative = money out) */
+  amount: number;
+  /** Balance after this event (a debt is negative) */
+  balanceAfter: number;
+  note: string | null;
+  /** For a transfer: the other account's name */
+  counterparty: string | null;
+  fee: number;
+};
+
+/**
+ * Everything that moved one account, newest first, with the balance after each
+ * event: where the money came from and where it went. Only events that count
+ * toward the balance (on or after the opening date) are listed.
+ */
+export async function accountHistory(
+  userId: string,
+  id: string,
+  limit = 100
+): Promise<{ status: "ok"; events: AccountEvent[]; total: number } | { status: "not_found" }> {
+  const account = await prisma.account.findFirst({ where: { id, userId } });
+  if (!account) return { status: "not_found" };
+
+  const [txs, outs, ins, adjustments, names] = await Promise.all([
+    prisma.transaction.findMany({ where: { userId, accountId: id } }),
+    prisma.transfer.findMany({ where: { userId, fromAccountId: id } }),
+    prisma.transfer.findMany({ where: { userId, toAccountId: id } }),
+    prisma.accountAdjustment.findMany({ where: { userId, accountId: id } }),
+    prisma.account.findMany({ where: { userId }, select: { id: true, name: true } }),
+  ]);
+  const name = (accountId: string) => names.find((n) => n.id === accountId)?.name ?? null;
+  const opened = account.openingDate.getTime();
+
+  type Raw = Omit<AccountEvent, "balanceAfter"> & { at: Date; created: Date };
+  const raw: Raw[] = [];
+  for (const t of txs) {
+    if (t.currency !== account.currency || t.date.getTime() < opened) continue;
+    raw.push({
+      kind: t.type === "i" ? "income" : "expense",
+      at: t.date,
+      created: t.createdAt,
+      date: dateKeyInTimeZone(t.date, APP_TIME_ZONE),
+      amount: t.type === "i" ? t.amount : -t.amount,
+      note: t.note,
+      counterparty: null,
+      fee: 0,
+    });
+  }
+  for (const t of outs) {
+    if (t.date.getTime() < opened) continue;
+    raw.push({
+      kind: "transfer_out",
+      at: t.date,
+      created: t.createdAt,
+      date: dateKeyInTimeZone(t.date, APP_TIME_ZONE),
+      amount: -fromMinor(Number(t.fromAmountMinor)),
+      note: t.note,
+      counterparty: name(t.toAccountId),
+      fee: fromMinor(Number(t.feeMinor)),
+    });
+  }
+  for (const t of ins) {
+    if (t.date.getTime() < opened) continue;
+    raw.push({
+      kind: "transfer_in",
+      at: t.date,
+      created: t.createdAt,
+      date: dateKeyInTimeZone(t.date, APP_TIME_ZONE),
+      amount: fromMinor(Number(t.toAmountMinor)),
+      note: t.note,
+      counterparty: name(t.fromAccountId),
+      fee: 0,
+    });
+  }
+  for (const a of adjustments) {
+    if (a.date.getTime() < opened) continue;
+    raw.push({
+      kind: "adjustment",
+      at: a.date,
+      created: a.createdAt,
+      date: dateKeyInTimeZone(a.date, APP_TIME_ZONE),
+      amount: fromMinor(Number(a.amountMinor)),
+      note: a.note,
+      counterparty: null,
+      fee: 0,
+    });
+  }
+
+  // Oldest first to carry the balance forward, then newest first for display.
+  // Money in cents so the running balance has no floating-point drift.
+  raw.sort((a, b) => a.at.getTime() - b.at.getTime() || a.created.getTime() - b.created.getTime());
+  let balanceMinor = Number(account.openingBalanceMinor);
+  const events: AccountEvent[] = raw.map(({ at: _at, created: _created, ...e }) => {
+    balanceMinor += toMinor(e.amount) - toMinor(e.fee);
+    return { ...e, balanceAfter: fromMinor(balanceMinor) };
+  });
+  return { status: "ok", events: events.reverse().slice(0, limit), total: events.length };
+}
