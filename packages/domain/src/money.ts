@@ -48,6 +48,17 @@ export function startOfMonth(d: Date = new Date()): Date {
   return startOfMonthOffset(0, d);
 }
 
+/** Day of the month (1-31) of an instant, in the app's time zone */
+export function appDayOfMonth(d: Date = new Date()): number {
+  return new Date(d.getTime() + APP_UTC_OFFSET_MS).getUTCDate();
+}
+
+/** How many days a "YYYY-MM" month has */
+export function daysInMonthKey(key: string): number {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
 /** Whole days left in the month after today's date, in the app's time zone */
 export function daysLeftInMonth(now: Date = new Date()): number {
   const shifted = new Date(now.getTime() + APP_UTC_OFFSET_MS);
@@ -225,6 +236,24 @@ export function openingBalancesForMonth(
   if (!plan) return {};
   const prev = startOfMonthOffset(-1, month);
   return replayMonths(txs, plan, base, fx, monthKeyOf(prev)).openings;
+}
+
+/**
+ * Every bucket's state for every month from the first transaction to `lastMonth`
+ * ("YYYY-MM"), replayed once through the same carry-over chain the app uses.
+ * Read-only.
+ */
+export function replayMonthStates(
+  txs: MoneyTx[],
+  plan: BudgetPlan | null,
+  base: string,
+  fx: Record<string, number>,
+  lastMonth: string
+): Map<string, MonthBucketState[]> {
+  const out = new Map<string, MonthBucketState[]>();
+  if (!plan) return out;
+  replayMonths(txs, plan, base, fx, lastMonth, {}, (key, states) => out.set(key, states));
+  return out;
 }
 
 /**

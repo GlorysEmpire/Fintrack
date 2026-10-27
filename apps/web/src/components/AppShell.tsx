@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Settings,
   Sparkles,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { formatLongDate } from "@/lib/format-date";
@@ -25,6 +26,7 @@ const TABS = [
   { href: "/income", label: "Income", icon: Wallet },
   { href: "/expenses", label: "Expenses", icon: ArrowLeftRight },
   { href: "/accounts", label: "Accounts", icon: Landmark },
+  { href: "/trends", label: "Trends", icon: TrendingUp },
   { href: "/settings", label: "Plan", icon: Settings },
   { href: "/advisor", label: "Advisor", icon: Sparkles },
   { href: "/inbox", label: "Inbox", icon: Inbox },

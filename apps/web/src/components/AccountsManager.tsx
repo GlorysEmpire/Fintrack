@@ -7,22 +7,14 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ACCOUNT_TYPES, CURRENCY_SYMBOLS, kindOfType, type CurrencyCode } from "@fintrack/domain";
+import { ACCOUNT_TYPES, kindOfType, type CurrencyCode } from "@fintrack/domain";
+import { formatExact as money } from "@/lib/money-format";
 import { toDateInputValue } from "@/lib/format-date";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { AccountView } from "@/lib/accounts";
 import type { TransferView } from "@/lib/transfers";
 
 const CURRENCIES: CurrencyCode[] = ["NGN", "USD", "GBP", "EUR"];
-
-/** Exact to the kobo/cent: balances must not be rounded to whole units */
-function money(amount: number, currency: string): string {
-  const sym = CURRENCY_SYMBOLS[currency as CurrencyCode] ?? "";
-  return `${sym}${Math.abs(amount).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
 
 type Panel =
   | { mode: "add" }
