@@ -116,7 +116,9 @@ class Table {
     private readonly name: string,
     private readonly defaults: () => Row,
     private readonly unique: string[],
-    private readonly db: FakeDb
+    private readonly db: FakeDb,
+    /** Groups of fields that are unique together (NULL never collides, as in PostgreSQL) */
+    private readonly uniqueTogether: string[][] = []
   ) {}
 
   private lazy<T>(op: string, run: () => T): Lazy<T> {
@@ -136,6 +138,17 @@ class Table {
       if (this.rows.some((r) => same(r[field], full[field]))) {
         throw Object.assign(
           new Error(`fake-db: unique constraint failed on ${this.name}.${field}`),
+          { code: "P2002" }
+        );
+      }
+    }
+    for (const fields of this.uniqueTogether) {
+      if (fields.some((f) => full[f] === null || full[f] === undefined)) continue;
+      if (this.rows.some((r) => fields.every((f) => same(r[f], full[f])))) {
+        throw Object.assign(
+          new Error(
+            `fake-db: unique constraint failed on ${this.name}.(${fields.join(", ")})`
+          ),
           { code: "P2002" }
         );
       }
@@ -363,11 +376,13 @@ export class FakeDb {
       override: false,
       reason: null,
       recurringRuleId: null,
+      occurrenceDate: null,
       date: new Date(),
       createdAt: new Date(),
     }),
     [],
-    this
+    this,
+    [["recurringRuleId", "occurrenceDate"]]
   );
   recurringRule = new Table(
     "recurringRule",
@@ -380,6 +395,8 @@ export class FakeDb {
       note: null,
       dayOfMonth: null,
       active: true,
+      lastRunAt: null,
+      lastError: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     }),

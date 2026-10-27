@@ -205,11 +205,16 @@ model Transaction {
   /// Set when created by a recurring rule expansion
   recurringRuleId String?
   recurringRule   RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  /// Which scheduled occurrence of the rule this is (the day, at noon UTC).
+  /// With recurringRuleId it is unique, so one occurrence can only ever be
+  /// recorded once, however many times the job runs. Null for everything else.
+  occurrenceDate  DateTime?
   /// When it happened (the user may file a transaction under an earlier day)
   date      DateTime @default(now())
   /// When it was recorded. Starts the edit window; never set by the client.
   createdAt DateTime @default(now())
 
+  @@unique([recurringRuleId, occurrenceDate])
   @@index([userId, date])
   @@index([householdId])
   @@index([recurringRuleId])
@@ -230,8 +235,13 @@ model RecurringRule {
   cadence    RecurringCadence
   /// 1–31 for monthly; ignored for daily/weekly
   dayOfMonth Int?
+  /// The next occurrence to generate (a day, at noon UTC)
   nextRunAt  DateTime
   active     Boolean          @default(true)
+  /// When the job last handled this rule, and why its last run did not go
+  /// cleanly (a plain sentence, never an amount). Null = nothing wrong.
+  lastRunAt  DateTime?
+  lastError  String?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 

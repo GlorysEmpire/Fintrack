@@ -9,8 +9,11 @@ import { getSessionUser } from "@/lib/auth";
 import { getBucketUsage, getUserPlan } from "@/lib/plan";
 import { getResetPreview } from "@/lib/reset";
 import { unreadCount } from "@/lib/inbox";
+import { prisma } from "@/lib/db";
+import { listRules } from "@/lib/recurring-rules";
 import { AppShell } from "@/components/AppShell";
 import { PlanSettings } from "@/components/PlanSettings";
+import { RecurringManager } from "@/components/RecurringManager";
 import { ResetFinTrack } from "@/components/ResetFinTrack";
 
 export default async function SettingsPage() {
@@ -18,11 +21,16 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [plan, usage, resetPreview, inboxUnread] = await Promise.all([
+  const [plan, usage, resetPreview, inboxUnread, rules, sources] = await Promise.all([
     getUserPlan(user.id),
     getBucketUsage(user.id),
     getResetPreview(user.id),
     unreadCount(user.id),
+    listRules(user.id),
+    prisma.incomeSource.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
 
   return (
@@ -57,6 +65,28 @@ export default async function SettingsPage() {
         baseCurrency={user.baseCurrency}
         usage={usage}
         hasHistory={resetPreview.transactions > 0}
+      />
+
+      <RecurringManager
+        rules={rules.map((r) => ({
+          id: r.id,
+          type: r.type === "i" ? "i" : "e",
+          amount: r.amount,
+          currency: r.currency,
+          bucketId: r.bucketId,
+          sourceId: r.sourceId,
+          note: r.note,
+          cadence: r.cadence,
+          dayOfMonth: r.dayOfMonth,
+          active: r.active,
+          nextDate: r.nextDate,
+          lastError: r.lastError,
+        }))}
+        buckets={(plan?.buckets ?? [])
+          .filter((b) => !b.archived)
+          .map((b) => ({ id: b.id, name: b.name, emoji: b.emoji }))}
+        sources={sources.map((s) => ({ id: s.id, name: s.name, emoji: s.emoji }))}
+        baseCurrency={user.baseCurrency}
       />
 
       <div className="sec">Danger zone</div>

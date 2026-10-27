@@ -54,6 +54,11 @@ export type NewTransactionInput = {
   reason?: string | null;
   /** "YYYY-MM-DD" in the app's time zone. Omitted = now. */
   date?: string | null;
+  /**
+   * Set only by the recurring job (never accepted from a request body): which
+   * occurrence of which rule this is. The database refuses a second one.
+   */
+  recurring?: { ruleId: string; occurrenceDate: Date };
 };
 
 /** Fields that may change while a transaction is still editable. The type may not. */
@@ -307,6 +312,17 @@ export async function createTransaction(
   return createUnlocked(user, input, now);
 }
 
+/**
+ * Record a transaction when the caller already holds the user's lock (the
+ * recurring job does, so it can check for an existing occurrence, record, and
+ * move the rule on as one step). Everything else goes through createTransaction.
+ */
+export const createTransactionWithinLock = (
+  user: SessionUser,
+  input: NewTransactionInput,
+  now: Date = new Date()
+) => createUnlocked(user, input, now);
+
 async function createUnlocked(
   user: SessionUser,
   input: NewTransactionInput,
@@ -334,6 +350,8 @@ async function createUnlocked(
         sourceId,
         note: clean(input.note) || null,
         date: when.date,
+        recurringRuleId: input.recurring?.ruleId ?? null,
+        occurrenceDate: input.recurring?.occurrenceDate ?? null,
       },
     });
     return { status: "ok", transaction, crossBucket: false };
@@ -366,6 +384,8 @@ async function createUnlocked(
       reason: check.reason || null,
       override: check.cross,
       date: when.date,
+      recurringRuleId: input.recurring?.ruleId ?? null,
+      occurrenceDate: input.recurring?.occurrenceDate ?? null,
     },
   });
 
