@@ -241,7 +241,6 @@ export default async function TrendsPage() {
                               a.expenses ? `spending ${formatExact(a.expenses, a.currency)}` : "",
                               a.transfersIn ? `transfers in ${formatExact(a.transfersIn, a.currency)}` : "",
                               a.transfersOut ? `transfers out ${formatExact(a.transfersOut, a.currency)}` : "",
-                              a.fees ? `fees ${formatExact(a.fees, a.currency)}` : "",
                               a.adjustments ? `adjustments ${signed(a.adjustments)}` : "",
                             ].filter(Boolean);
                             return (

@@ -7,6 +7,14 @@
  * Across currencies the user states what left and what arrived; no conversion
  * is ever assumed.
  *
+ * A transfer fee is a real cost, so it is recorded as an ordinary EXPENSE
+ * transaction on the source account, linked to the transfer. It therefore
+ * counts once as spending, takes money from the account once, and obeys the
+ * same rule as any expense: a bucket is blocked at zero, so a fee the chosen
+ * bucket can not cover refuses the whole transfer and nothing is saved. The
+ * transfer and its fee are written together, all or nothing, and deleting the
+ * transfer removes its fee.
+ *
  * Moving money here only records that it moved. Nothing leaves FinTrack.
  */
 import {
@@ -18,9 +26,13 @@ import {
   resolveTransactionDate,
   transactionLockState,
 } from "@fintrack/domain";
-import type { Transfer } from "@prisma/client";
+import type { PrismaPromise, Transfer } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { checkAccountForEvent } from "./accounts";
 import { prisma } from "./db";
+import { getUserPlan } from "./plan";
+import { checkExpense, type BucketShortfall, type SessionUser } from "./transactions";
+import { withUserLock } from "./user-lock";
 
 export type NewTransferInput = {
   fromAccountId: string;
@@ -29,8 +41,10 @@ export type NewTransferInput = {
   amount: number;
   /** Major units that arrived. Required if the currencies differ. */
   toAmount?: number | null;
-  /** Extra charge taken from the source account */
+  /** What the transfer cost, charged to the source account as an expense */
   fee?: number | null;
+  /** The plan bucket the fee is spent from (needed when there is a fee and a plan) */
+  feeBucketId?: string | null;
   /** Informational only */
   exchangeRate?: number | null;
   /** "YYYY-MM-DD", today or earlier. Omitted = now. */
@@ -59,6 +73,7 @@ export type TransferView = {
 export type TransferResult =
   | { status: "ok"; transfer: TransferView }
   | { status: "invalid"; error: string }
+  | { status: "blocked"; error: string; shortfall: BucketShortfall }
   | { status: "locked"; error: string; editableUntil: string }
   | { status: "not_found" };
 
@@ -81,10 +96,21 @@ export function toTransferView(t: Transfer, now: Date = new Date()): TransferVie
 }
 
 export async function createTransfer(
-  userId: string,
+  user: SessionUser,
   input: NewTransferInput,
   now: Date = new Date()
 ): Promise<TransferResult> {
+  // The fee is checked against a bucket's balance and then written, so this
+  // runs under the user's lock like any other expense.
+  return withUserLock(user.id, () => createUnlocked(user, input, now));
+}
+
+async function createUnlocked(
+  user: SessionUser,
+  input: NewTransferInput,
+  now: Date
+): Promise<TransferResult> {
+  const userId = user.id;
   const when = resolveTransactionDate({ dateKey: input.date, timeZone: APP_TIME_ZONE, now });
   if (!when.ok) return { status: "invalid", error: when.error };
 
@@ -112,20 +138,77 @@ export async function createTransfer(
   const toError = await checkAccountForEvent(userId, to.id, to.currency, when.date);
   if (toError) return { status: "invalid", error: toError };
 
-  const transfer = await prisma.transfer.create({
-    data: {
-      userId,
-      fromAccountId: from.id,
-      toAccountId: to.id,
-      fromAmountMinor: BigInt(shape.fromAmountMinor),
-      toAmountMinor: BigInt(shape.toAmountMinor),
-      feeMinor: BigInt(shape.feeMinor),
-      exchangeRate: input.exchangeRate ?? null,
-      date: when.date,
-      note: input.note?.trim() || null,
-      reference: input.reference?.trim() || null,
-    },
-  });
+  const id = randomUUID();
+  const writes: PrismaPromise<unknown>[] = [
+    prisma.transfer.create({
+      data: {
+        id,
+        userId,
+        fromAccountId: from.id,
+        toAccountId: to.id,
+        fromAmountMinor: BigInt(shape.fromAmountMinor),
+        toAmountMinor: BigInt(shape.toAmountMinor),
+        feeMinor: BigInt(shape.feeMinor),
+        exchangeRate: input.exchangeRate ?? null,
+        date: when.date,
+        note: input.note?.trim() || null,
+        reference: input.reference?.trim() || null,
+      },
+    }),
+  ];
+
+  if (shape.feeMinor > 0) {
+    // A cost is spending: it must pass the same checks as any expense
+    const plan = await getUserPlan(userId);
+    if (plan && !input.feeBucketId) {
+      return { status: "invalid", error: "Pick the bucket the transfer fee is spent from." };
+    }
+    const check = await checkExpense(
+      user,
+      {
+        amount: fromMinor(shape.feeMinor),
+        currency: from.currency,
+        bucketId: input.feeBucketId || null,
+        category: null,
+        note: `Transfer fee: ${from.name} to ${to.name}`,
+        reason: "",
+        date: when.date,
+      },
+      { now, moneyChanged: true }
+    );
+    if (!check.ok) {
+      const result = check.result;
+      if (result.status === "blocked") {
+        return {
+          status: "blocked",
+          error: `${result.error} The transfer was not made.`,
+          shortfall: result.shortfall,
+        };
+      }
+      if (result.status === "invalid") return { status: "invalid", error: result.error };
+      return { status: "invalid", error: "The fee could not be recorded." };
+    }
+    writes.push(
+      prisma.transaction.create({
+        data: {
+          userId,
+          type: "e",
+          amount: fromMinor(shape.feeMinor),
+          currency: from.currency,
+          bucketId: check.bucketId,
+          category: null,
+          note: check.note || null,
+          override: false,
+          date: when.date,
+          accountId: from.id,
+          transferId: id,
+        },
+      })
+    );
+  }
+
+  // The transfer and its fee are saved together or not at all
+  const [transfer] = (await prisma.$transaction(writes)) as [Transfer];
   return { status: "ok", transfer: toTransferView(transfer, now) };
 }
 
@@ -156,6 +239,10 @@ export async function deleteTransfer(
   if (lock.locked) {
     return { status: "locked", error: LOCKED_EXPLANATION, editableUntil: lock.editableUntil.toISOString() };
   }
-  await prisma.transfer.deleteMany({ where: { id: existing.id, userId } });
+  // The fee expense (if any) goes with its transfer, together or not at all
+  await prisma.$transaction([
+    prisma.transaction.deleteMany({ where: { transferId: existing.id, userId } }),
+    prisma.transfer.deleteMany({ where: { id: existing.id, userId } }),
+  ]);
   return { status: "deleted" };
 }

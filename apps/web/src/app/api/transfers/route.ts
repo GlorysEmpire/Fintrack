@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   if (!user) return unauthorized();
   try {
     const body = createTransferSchema.parse(await req.json());
-    return transferResponse(await createTransfer(user.id, body));
+    return transferResponse(await createTransfer(user, body));
   } catch (e) {
     return routeError(e, "POST /api/transfers");
   }

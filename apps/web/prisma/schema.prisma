@@ -216,6 +216,10 @@ model Transaction {
   /// (all history from before accounts existed). Never guessed or back-filled.
   accountId       String?
   account         Account?       @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  /// Set when this expense is the fee charged for a transfer. It lives and dies
+  /// with that transfer, and can not be edited or deleted on its own.
+  transferId      String?        @unique
+  transfer        Transfer?      @relation("TransferFee", fields: [transferId], references: [id], onDelete: Cascade)
   /// When it happened (the user may file a transaction under an earlier day)
   date            DateTime       @default(now())
   /// When it was recorded. Starts the edit window; never set by the client.
@@ -300,31 +304,34 @@ model Account {
 // the movement, so the two sides can never drift apart and creating it is
 // atomic by nature. A transfer is never income and never spending.
 model Transfer {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   fromAccountId   String
-  fromAccount     Account  @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: NoAction)
+  fromAccount     Account      @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: NoAction)
   toAccountId     String
-  toAccount       Account  @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: NoAction)
+  toAccount       Account      @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: NoAction)
   /// Minor units that left the source, in the source's currency
   fromAmountMinor BigInt
   /// Minor units that arrived, in the destination's currency (stated, never assumed)
   toAmountMinor   BigInt
-  /// Extra charge taken from the source account, in its currency
-  feeMinor        BigInt   @default(0)
+  /// What the transfer cost, in the source account's currency. Recorded as an
+  /// ordinary expense transaction (feeTransaction), so it counts once, as
+  /// spending; the amount is kept here for display.
+  feeMinor        BigInt       @default(0)
+  feeTransaction  Transaction? @relation("TransferFee")
   /// Informational only (destination units per source unit); never used in arithmetic
   exchangeRate    Float?
   /// The day it happened
   date            DateTime
   /// When it was recorded; starts the edit window
-  createdAt       DateTime @default(now())
+  createdAt       DateTime     @default(now())
   note            String?
   reference       String?
   /// posted (more later, for imports: pending)
-  status          String   @default("posted")
+  status          String       @default("posted")
   /// manual (later: import)
-  source          String   @default("manual")
+  source          String       @default("manual")
 
   @@index([userId, date])
   @@index([fromAccountId])

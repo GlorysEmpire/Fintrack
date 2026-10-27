@@ -393,7 +393,6 @@ export interface AccountMonthMovement {
   expenseMinor: number;
   transfersInMinor: number;
   transfersOutMinor: number;
-  feesMinor: number;
   adjustmentsMinor: number;
 }
 
@@ -446,7 +445,6 @@ export function accountMovementForMonth(opts: {
       expenseMinor: diff("expenseMinor"),
       transfersInMinor: diff("transfersInMinor"),
       transfersOutMinor: diff("transfersOutMinor"),
-      feesMinor: diff("feesMinor"),
       adjustmentsMinor: diff("adjustmentsMinor"),
     };
   });

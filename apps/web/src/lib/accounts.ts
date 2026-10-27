@@ -80,7 +80,6 @@ export type AccountView = {
   expenses: number;
   transfersIn: number;
   transfersOut: number;
-  fees: number;
   adjustments: number;
   eventCount: number;
   /** An asset below zero usually means a missing record */
@@ -125,7 +124,6 @@ function toView(a: Account, b: AccountBalance): AccountView {
     expenses: fromMinor(b.expenseMinor),
     transfersIn: fromMinor(b.transfersInMinor),
     transfersOut: fromMinor(b.transfersOutMinor),
-    fees: fromMinor(b.feesMinor),
     adjustments: fromMinor(b.adjustmentsMinor),
     eventCount: b.eventCount,
     belowZero: kind === "asset" && b.balanceMinor < 0,
@@ -162,7 +160,6 @@ export async function listAccounts(userId: string): Promise<{
       toAccountId: t.toAccountId,
       fromAmountMinor: Number(t.fromAmountMinor),
       toAmountMinor: Number(t.toAmountMinor),
-      feeMinor: Number(t.feeMinor),
       date: t.date,
     })),
     adjustments.map((a) => ({
@@ -388,7 +385,6 @@ export type AccountEvent = {
   note: string | null;
   /** For a transfer: the other account's name */
   counterparty: string | null;
-  fee: number;
 };
 
 /**
@@ -426,7 +422,6 @@ export async function accountHistory(
       amount: t.type === "i" ? t.amount : -t.amount,
       note: t.note,
       counterparty: null,
-      fee: 0,
     });
   }
   for (const t of outs) {
@@ -439,7 +434,6 @@ export async function accountHistory(
       amount: -fromMinor(Number(t.fromAmountMinor)),
       note: t.note,
       counterparty: name(t.toAccountId),
-      fee: fromMinor(Number(t.feeMinor)),
     });
   }
   for (const t of ins) {
@@ -452,7 +446,6 @@ export async function accountHistory(
       amount: fromMinor(Number(t.toAmountMinor)),
       note: t.note,
       counterparty: name(t.fromAccountId),
-      fee: 0,
     });
   }
   for (const a of adjustments) {
@@ -465,7 +458,6 @@ export async function accountHistory(
       amount: fromMinor(Number(a.amountMinor)),
       note: a.note,
       counterparty: null,
-      fee: 0,
     });
   }
 
@@ -474,7 +466,7 @@ export async function accountHistory(
   raw.sort((a, b) => a.at.getTime() - b.at.getTime() || a.created.getTime() - b.created.getTime());
   let balanceMinor = Number(account.openingBalanceMinor);
   const events: AccountEvent[] = raw.map(({ at: _at, created: _created, ...e }) => {
-    balanceMinor += toMinor(e.amount) - toMinor(e.fee);
+    balanceMinor += toMinor(e.amount);
     return { ...e, balanceAfter: fromMinor(balanceMinor) };
   });
   return { status: "ok", events: events.reverse().slice(0, limit), total: events.length };

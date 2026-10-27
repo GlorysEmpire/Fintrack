@@ -7,6 +7,7 @@ import { getSessionUser } from "@/lib/auth";
 import { listAccounts } from "@/lib/accounts";
 import { listTransfers } from "@/lib/transfers";
 import { unreadCount } from "@/lib/inbox";
+import { getUserPlan } from "@/lib/plan";
 import { AppShell } from "@/components/AppShell";
 import { AccountsManager } from "@/components/AccountsManager";
 
@@ -15,10 +16,11 @@ export default async function AccountsPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [{ accounts, unassignedCount }, transfers, inboxUnread] = await Promise.all([
+  const [{ accounts, unassignedCount }, transfers, inboxUnread, plan] = await Promise.all([
     listAccounts(user.id),
     listTransfers(user.id, { limit: 30 }),
     unreadCount(user.id),
+    getUserPlan(user.id),
   ]);
 
   return (
@@ -38,6 +40,9 @@ export default async function AccountsPage() {
         accounts={accounts}
         transfers={transfers}
         unassignedCount={unassignedCount}
+        buckets={(plan?.buckets ?? [])
+          .filter((b) => !b.archived)
+          .map((b) => ({ id: b.id, name: b.name, emoji: b.emoji }))}
       />
     </AppShell>
   );

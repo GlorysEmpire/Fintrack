@@ -54,12 +54,11 @@ describe("account balances are derived from opening balance + events", () => {
 });
 
 describe("transfers move money without being income or spending", () => {
-  const transfer = (from: string, to: string, amount: number, extra: Partial<{ toAmountMinor: number; feeMinor: number }> = {}) => ({
+  const transfer = (from: string, to: string, amount: number, extra: Partial<{ toAmountMinor: number }> = {}) => ({
     fromAccountId: from,
     toAccountId: to,
     fromAmountMinor: toMinor(amount),
     toAmountMinor: extra.toAmountMinor ?? toMinor(amount),
-    feeMinor: extra.feeMinor ?? 0,
     date: day(5),
   });
 
@@ -72,11 +71,14 @@ describe("transfers move money without being income or spending", () => {
     assert.equal(balance(rows, "bank").incomeMinor + balance(rows, "bank").expenseMinor, 0);
   });
 
-  it("a fee comes out of the source account on top of the amount sent", () => {
-    const rows = accountBalances([bank, cash], [], [transfer("bank", "cash", 30_000, { feeMinor: toMinor(50) })]);
+  it("a transfer fee is an ordinary expense on the source account: spending once, never inside the transfer", () => {
+    const feeExpense = { accountId: "bank", type: "e" as const, amount: 50, currency: "NGN", date: day(5) };
+    const rows = accountBalances([bank, cash], [feeExpense], [transfer("bank", "cash", 30_000)]);
     assert.equal(balance(rows, "bank").balanceMinor, toMinor(100_000 - 30_000 - 50));
-    assert.equal(balance(rows, "cash").balanceMinor, toMinor(30_000));
-    assert.equal(balance(rows, "bank").feesMinor, toMinor(50));
+    assert.equal(balance(rows, "cash").balanceMinor, toMinor(30_000)); // the fee did not shrink what arrived
+    assert.equal(balance(rows, "bank").expenseMinor, toMinor(50));
+    // the transfer by itself carries no fee: without the expense the balance is just the transfer
+    assert.equal(balance(accountBalances([bank, cash], [], [transfer("bank", "cash", 30_000)]), "bank").balanceMinor, toMinor(70_000));
   });
 
   it("a cross-currency transfer uses the stated amounts on each side", () => {
@@ -108,7 +110,7 @@ describe("credit cards and loans", () => {
 
   it("paying the card is a transfer: the bank falls, the debt falls, and no second expense exists", () => {
     const txs = [{ accountId: "card", type: "e" as const, amount: 5_000, currency: "NGN", date: day(2) }];
-    const pay = [{ fromAccountId: "bank", toAccountId: "card", fromAmountMinor: toMinor(25_000), toAmountMinor: toMinor(25_000), feeMinor: 0, date: day(6) }];
+    const pay = [{ fromAccountId: "bank", toAccountId: "card", fromAmountMinor: toMinor(25_000), toAmountMinor: toMinor(25_000), date: day(6) }];
     const rows = accountBalances([bank, card], txs, pay);
     assert.equal(balance(rows, "card").owedMinor, 0);
     assert.equal(balance(rows, "bank").balanceMinor, toMinor(75_000));
@@ -118,7 +120,7 @@ describe("credit cards and loans", () => {
   });
 
   it("loan proceeds raise the debt and the bank balance, and are not income", () => {
-    const draw = [{ fromAccountId: "loan", toAccountId: "bank", fromAmountMinor: toMinor(200_000), toAmountMinor: toMinor(200_000), feeMinor: 0, date: day(3) }];
+    const draw = [{ fromAccountId: "loan", toAccountId: "bank", fromAmountMinor: toMinor(200_000), toAmountMinor: toMinor(200_000), date: day(3) }];
     const rows = accountBalances([bank, loan], [], draw);
     assert.equal(balance(rows, "loan").owedMinor, toMinor(200_000));
     assert.equal(balance(rows, "bank").balanceMinor, toMinor(300_000));
@@ -126,8 +128,8 @@ describe("credit cards and loans", () => {
   });
 
   it("principal repaid is a transfer; interest is a separate ordinary expense", () => {
-    const draw = { fromAccountId: "loan", toAccountId: "bank", fromAmountMinor: toMinor(200_000), toAmountMinor: toMinor(200_000), feeMinor: 0, date: day(3) };
-    const principal = { fromAccountId: "bank", toAccountId: "loan", fromAmountMinor: toMinor(50_000), toAmountMinor: toMinor(50_000), feeMinor: 0, date: day(20) };
+    const draw = { fromAccountId: "loan", toAccountId: "bank", fromAmountMinor: toMinor(200_000), toAmountMinor: toMinor(200_000), date: day(3) };
+    const principal = { fromAccountId: "bank", toAccountId: "loan", fromAmountMinor: toMinor(50_000), toAmountMinor: toMinor(50_000), date: day(20) };
     const interest = { accountId: "bank", type: "e" as const, amount: 4_000, currency: "NGN", date: day(20) };
     const rows = accountBalances([bank, loan], [interest], [draw, principal]);
     assert.equal(balance(rows, "loan").owedMinor, toMinor(150_000));

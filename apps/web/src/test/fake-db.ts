@@ -378,12 +378,13 @@ export class FakeDb {
       recurringRuleId: null,
       occurrenceDate: null,
       accountId: null,
+      transferId: null,
       date: new Date(),
       createdAt: new Date(),
     }),
     [],
     this,
-    [["recurringRuleId", "occurrenceDate"]]
+    [["recurringRuleId", "occurrenceDate"], ["transferId"]]
   );
   recurringRule = new Table(
     "recurringRule",

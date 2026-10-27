@@ -53,6 +53,7 @@ export const createTransferSchema = z
     amount: positive,
     toAmount: positive.optional().nullable(),
     fee: money.min(0).optional().nullable(),
+    feeBucketId: id.optional().nullable(),
     exchangeRate: positive.optional().nullable(),
     date: day.optional().nullable(),
     note: text(500).optional().nullable(),
@@ -74,6 +75,8 @@ export function accountResponse(result: AccountResult) {
 /** 200 saved · 400 not valid · 404 not yours / not found · 423 edit window closed */
 export function transferResponse(result: TransferResult | { status: "deleted" }) {
   switch (result.status) {
+    case "blocked":
+      return jsonError(422, result.error, { blocked: true, shortfall: result.shortfall });
     case "ok":
       return NextResponse.json({ ok: true, transfer: result.transfer });
     case "deleted":

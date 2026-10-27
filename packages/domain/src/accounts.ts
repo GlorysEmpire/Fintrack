@@ -18,7 +18,8 @@
  *     - paying the card          transfer bank → card: bank down, owed down (NOT spending)
  *     - loan proceeds            transfer loan → bank: owed up, bank up (NOT income)
  *     - loan principal repaid    transfer bank → loan (NOT an expense)
- *     - loan interest, fees      ordinary expenses
+ *     - loan interest, transfer fees   ordinary expenses (a fee is spending, so it
+ *                                      is recorded as an expense transaction)
  *
  * A balance is never stored. It is derived: opening balance + every event
  * dated on or after the opening date. So it can not drift from the history.
@@ -76,14 +77,16 @@ export interface LedgerTx {
   date: Date | string;
 }
 
-/** Money moved between two of the user's own accounts. Never income or spending. */
+/**
+ * Money moved between two of the user's own accounts. Never income or spending.
+ * A fee charged for the transfer is NOT part of it: it is an ordinary expense
+ * transaction on the source account, so it counts once, as spending.
+ */
 export interface LedgerTransfer {
   fromAccountId: string;
   toAccountId: string;
   fromAmountMinor: number;
   toAmountMinor: number;
-  /** Extra charge taken from the source account, on top of the amount sent */
-  feeMinor: number;
   date: Date | string;
 }
 
@@ -117,7 +120,6 @@ export interface AccountBalance {
   expenseMinor: number;
   transfersInMinor: number;
   transfersOutMinor: number;
-  feesMinor: number;
   adjustmentsMinor: number;
   /** Events on or after the opening date that were counted */
   eventCount: number;
@@ -146,7 +148,6 @@ export function accountBalances(
       expenseMinor: 0,
       transfersInMinor: 0,
       transfersOutMinor: 0,
-      feesMinor: 0,
       adjustmentsMinor: 0,
       eventCount: 0,
       opened: time(a.openingDate),
@@ -168,7 +169,6 @@ export function accountBalances(
     const from = byId.get(tr.fromAccountId);
     if (from && time(tr.date) >= from.opened) {
       from.transfersOutMinor += tr.fromAmountMinor;
-      from.feesMinor += tr.feeMinor;
       from.eventCount += 1;
     }
     const to = byId.get(tr.toAccountId);
@@ -190,8 +190,7 @@ export function accountBalances(
       r.incomeMinor -
       r.expenseMinor +
       r.transfersInMinor -
-      r.transfersOutMinor -
-      r.feesMinor +
+      r.transfersOutMinor +
       r.adjustmentsMinor;
     return {
       accountId: r.accountId,
@@ -201,7 +200,6 @@ export function accountBalances(
       expenseMinor: r.expenseMinor,
       transfersInMinor: r.transfersInMinor,
       transfersOutMinor: r.transfersOutMinor,
-      feesMinor: r.feesMinor,
       adjustmentsMinor: r.adjustmentsMinor,
       eventCount: r.eventCount,
     };

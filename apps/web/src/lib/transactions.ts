@@ -84,6 +84,10 @@ export type TransactionResult =
   | { status: "locked"; error: string; editableUntil: string }
   | { status: "not_found" };
 
+/** A transfer's fee is part of that transfer, so it is changed only through it. */
+const TRANSFER_FEE_MESSAGE =
+  "This is the fee for a transfer. It can only be removed by deleting the transfer.";
+
 const CATEGORY_IDS = new Set(EXPENSE_CATEGORIES.map((c) => c.id));
 
 function clean(text: string | null | undefined): string {
@@ -128,7 +132,7 @@ async function ownsSource(userId: string, sourceId: string): Promise<boolean> {
   return Boolean(source);
 }
 
-type ExpenseCheck =
+export type ExpenseCheck =
   | { ok: false; result: TransactionResult }
   | {
       ok: true;
@@ -146,7 +150,7 @@ type ExpenseCheck =
  * Everything an expense has to pass before it is written.
  * `previous` is the stored row when editing; unchanged values are not re-argued.
  */
-async function checkExpense(
+export async function checkExpense(
   user: SessionUser,
   want: {
     amount: number;
@@ -424,6 +428,7 @@ async function updateUnlocked(
     where: { id, userId: user.id },
   });
   if (!existing) return { status: "not_found" };
+  if (existing.transferId) return invalid(TRANSFER_FEE_MESSAGE);
 
   const lock = transactionLockState(existing.createdAt, now);
   if (lock.locked) {
@@ -530,6 +535,7 @@ export async function deleteTransaction(
     where: { id, userId: user.id },
   });
   if (!existing) return { status: "not_found" };
+  if (existing.transferId) return invalid(TRANSFER_FEE_MESSAGE);
 
   const lock = transactionLockState(existing.createdAt, now);
   if (lock.locked) {

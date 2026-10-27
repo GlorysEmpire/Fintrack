@@ -39,7 +39,6 @@ export type AccountMovementView = {
     expenses: number;
     transfersIn: number;
     transfersOut: number;
-    fees: number;
     adjustments: number;
   }[];
 };
@@ -99,7 +98,6 @@ export async function getPerformance(
     toAccountId: t.toAccountId,
     fromAmountMinor: Number(t.fromAmountMinor),
     toAmountMinor: Number(t.toAmountMinor),
-    feeMinor: Number(t.feeMinor),
     date: t.date,
   }));
   const savingsFlows = savingsFlowsByMonth({
@@ -159,7 +157,6 @@ export async function getPerformance(
         expenses: fromMinor(m.expenseMinor),
         transfersIn: fromMinor(m.transfersInMinor),
         transfersOut: fromMinor(m.transfersOutMinor),
-        fees: fromMinor(m.feesMinor),
         adjustments: fromMinor(m.adjustmentsMinor),
       };
     }),

@@ -63,7 +63,7 @@ describe("GET /api/performance", () => {
     const cash = await make("Cash", 0);
 
     const before = (await get()).months;
-    const res = await createTransfer(jsonRequest("POST", { fromAccountId: bank, toAccountId: cash, amount: 20_000, fee: 50 }));
+    const res = await createTransfer(jsonRequest("POST", { fromAccountId: bank, toAccountId: cash, amount: 20_000 }));
     expect(res.status).toBe(200);
     const body = await get();
 
@@ -72,7 +72,7 @@ describe("GET /api/performance", () => {
     const thisMonth = body.accountMovement[1].accounts;
     const b = thisMonth.find((a: { name: string }) => a.name === "Bank");
     const c = thisMonth.find((a: { name: string }) => a.name === "Cash");
-    expect(b).toMatchObject({ transfersOut: 20_000, fees: 50, net: -20_050 });
+    expect(b).toMatchObject({ transfersOut: 20_000, net: -20_000 });
     expect(c).toMatchObject({ transfersIn: 20_000, net: 20_000 });
   });
 

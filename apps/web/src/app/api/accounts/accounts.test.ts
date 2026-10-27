@@ -30,6 +30,7 @@ import { GET as historyRoute } from "./[id]/history/route";
 import { GET as listTransfers, POST as createTransferRoute } from "../transfers/route";
 import { DELETE as deleteTransfer } from "../transfers/[id]/route";
 import { POST as postTransaction } from "../transactions/route";
+import { DELETE as deleteTransactionRoute, PATCH as patchTransactionRoute } from "../transactions/[id]/route";
 import { GET as dashboard } from "../dashboard/route";
 
 afterEach(cleanup);
@@ -43,6 +44,8 @@ const adjust = (id: string, body: unknown) => adjustRoute(jsonRequest("POST", bo
 const assign = (id: string, body: unknown = { confirm: true }) => assignRoute(jsonRequest("POST", body), params(id));
 const transfer = (body: Record<string, unknown>) => createTransferRoute(jsonRequest("POST", body));
 const removeTransfer = (id: string) => deleteTransfer(jsonRequest("DELETE"), params(id));
+const patchTx = (id: string, body: unknown) => patchTransactionRoute(jsonRequest("PATCH", body), params(id));
+const deleteTx = (id: string) => deleteTransactionRoute(jsonRequest("DELETE"), params(id));
 const history = (id: string) => historyRoute(jsonRequest("GET"), params(id));
 const logTx = (body: Record<string, unknown>) =>
   postTransaction(jsonRequest("POST", { currency: "NGN", ...body }));
@@ -242,12 +245,12 @@ describe("transfers", () => {
 
   it("moves money from one account to the other as a single record", async () => {
     const { bank, cash } = await twoAccounts();
-    const res = await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 30_000, fee: 50, note: "ATM", reference: "REF1" });
+    const res = await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 30_000, fee: 50, feeBucketId: "spend", note: "ATM", reference: "REF1" });
     expect(res.status).toBe(200);
     expect((await res.json()).transfer).toMatchObject({ fromAmount: 30_000, toAmount: 30_000, fee: 50, note: "ATM", reference: "REF1" });
 
     const { byName } = await accountsNow();
-    expect(byName("Bank")).toMatchObject({ balance: 69_950, transfersOut: 30_000, fees: 50 });
+    expect(byName("Bank")).toMatchObject({ balance: 69_950, transfersOut: 30_000, expenses: 50 });
     expect(byName("Cash")).toMatchObject({ balance: 30_000, transfersIn: 30_000 });
     expect(await testDb.transfer.count({})).toBe(1);
   });
@@ -496,18 +499,18 @@ describe("account history: where the money came from and where it went", () => {
     const cash = await create({ name: "Cash" });
     await logTx({ type: "i", amount: 100_000, accountId: bank.id, date: "2026-02-01", note: "salary" });
     await logTx({ type: "e", amount: 1_250.5, accountId: bank.id, bucketId: "spend", category: "food", date: "2026-02-03" });
-    await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 2_000, fee: 25, date: "2026-02-05", note: "ATM" });
+    await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 2_000, date: "2026-02-05", note: "ATM" });
     await adjust(bank.id, { actualBalance: 107_000, note: "reconciled" });
 
     const body = await (await history(bank.id)).json();
     expect(body.events.map((e: { kind: string }) => e.kind)).toEqual(["adjustment", "transfer_out", "expense", "income"]);
     const out = body.events.find((e: { kind: string }) => e.kind === "transfer_out");
-    expect(out).toMatchObject({ amount: -2_000, fee: 25, counterparty: "Cash", note: "ATM" });
+    expect(out).toMatchObject({ amount: -2_000, counterparty: "Cash", note: "ATM" });
     // the balance after the newest event is the balance the account reports
     expect(body.events[0].balanceAfter).toBe(107_000);
     expect((await accountsNow()).byName("Bank").balance).toBe(107_000);
-    // and each step adds up: 10,000 + 100,000 − 1,250.50 − 2,000 − 25
-    expect(out.balanceAfter).toBe(106_724.5);
+    // and each step adds up: 10,000 + 100,000 − 1,250.50 − 2,000
+    expect(out.balanceAfter).toBe(106_749.5);
     expect(body.total).toBe(4);
 
     const cashBody = await (await history(cash.id)).json();
@@ -530,5 +533,109 @@ describe("account history: where the money came from and where it went", () => {
     expect((await history(theirs.id)).status).toBe(404);
     signIn(null);
     expect((await history(theirs.id)).status).toBe(401);
+  });
+});
+
+describe("a transfer fee is a real expense", () => {
+  async function setup() {
+    const user = await signedIn();
+    await withPlanAndIncome(user.id); // Spend holds ₦8,100
+    const bank = await create({ name: "Bank", openingBalance: 100_000 });
+    const cash = await create({ name: "Cash" });
+    const snap = async () => (await (await dashboard()).json()).snapshot;
+    return { user, bank, cash, snap };
+  }
+
+  it("is recorded once as an expense on the sending account, from the chosen bucket", async () => {
+    const { user, bank, cash, snap } = await setup();
+    const before = await snap();
+    const res = await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 10_000, fee: 50, feeBucketId: "spend", note: "ATM" });
+    expect(res.status).toBe(200);
+
+    const fees = await testDb.transaction.findMany({ where: { userId: user.id, transferId: { not: null } } });
+    expect(fees).toHaveLength(1);
+    expect(fees[0]).toMatchObject({ type: "e", amount: 50, currency: "NGN", bucketId: "spend", accountId: bank.id });
+    expect(fees[0].note).toMatch(/Transfer fee: Bank to Cash/);
+
+    const { byName } = await accountsNow();
+    expect(byName("Bank")).toMatchObject({ balance: 89_950, expenses: 50, transfersOut: 10_000 }); // 100,000 − 10,000 − 50, once
+    expect(byName("Cash").balance).toBe(10_000); // what arrived is unaffected by the fee
+
+    const after = await snap();
+    expect(after.expenses - before.expenses).toBe(50); // spending counts it once
+    expect(after.income).toBe(before.income); // and the transfer itself is still neutral
+    const spend = after.buckets.find((b: { bucketId: string }) => b.bucketId === "spend");
+    const spendBefore = before.buckets.find((b: { bucketId: string }) => b.bucketId === "spend");
+    expect(spendBefore.closing - spend.closing).toBe(50);
+  });
+
+  it("needs a bucket when there is a plan, and saves nothing without one", async () => {
+    const { user, bank, cash } = await setup();
+    const res = await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 100, fee: 5 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/bucket the transfer fee/);
+    expect(await testDb.transfer.count({})).toBe(0);
+    expect(await testDb.transaction.count({ where: { userId: user.id, type: "e" } })).toBe(0);
+  });
+
+  it("is blocked at zero like any expense: the whole transfer is refused and nothing is saved", async () => {
+    const { user, bank, cash } = await setup(); // Spend holds ₦8,100
+    const res = await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 100, fee: 9_000, feeBucketId: "spend" });
+    expect(res.status).toBe(422);
+    const data = await res.json();
+    expect(data.blocked).toBe(true);
+    expect(data.shortfall).toMatchObject({ bucketId: "spend", available: 8_100, requested: 9_000 });
+    expect(data.error).toMatch(/The transfer was not made/);
+    expect(await testDb.transfer.count({})).toBe(0);
+    expect(await testDb.transaction.count({ where: { userId: user.id, type: "e" } })).toBe(0);
+    expect((await accountsNow()).byName("Bank").balance).toBe(100_000);
+  });
+
+  it("with no plan yet, the fee is still an expense, just in no bucket", async () => {
+    const user = await signedIn();
+    const bank = await create({ name: "Bank", openingBalance: 1_000 });
+    const cash = await create({ name: "Cash" });
+    expect((await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 100, fee: 10 })).status).toBe(200);
+    const fee = (await testDb.transaction.findMany({ where: { userId: user.id } }))[0];
+    expect(fee).toMatchObject({ type: "e", amount: 10, bucketId: null });
+    expect((await accountsNow()).byName("Bank").balance).toBe(890);
+  });
+
+  it("deleting the transfer removes its fee too, and the numbers return", async () => {
+    const { user, bank, cash, snap } = await setup();
+    const before = await snap();
+    const made = (await (await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 10_000, fee: 50, feeBucketId: "spend" })).json()).transfer;
+
+    expect((await removeTransfer(made.id)).status).toBe(200);
+    expect(await testDb.transaction.count({ where: { userId: user.id, transferId: { not: null } } })).toBe(0);
+    expect((await accountsNow()).byName("Bank").balance).toBe(100_000);
+    expect((await snap()).expenses).toBe(before.expenses);
+  });
+
+  it("the fee can not be edited or deleted on its own", async () => {
+    const { user, bank, cash } = await setup();
+    await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 100, fee: 5, feeBucketId: "spend" });
+    const fee = (await testDb.transaction.findMany({ where: { userId: user.id, transferId: { not: null } } }))[0];
+
+    const edit = await patchTx(fee.id, { amount: 1 });
+    expect(edit.status).toBe(400);
+    expect((await edit.json()).error).toMatch(/deleting the transfer/);
+    expect((await deleteTx(fee.id)).status).toBe(400);
+    expect(await testDb.transaction.count({ where: { id: fee.id } })).toBe(1);
+  });
+
+  it("a transfer with no fee records no expense at all", async () => {
+    const { user, bank, cash } = await setup();
+    await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 1_000 });
+    expect(await testDb.transaction.count({ where: { userId: user.id, type: "e" } })).toBe(0);
+  });
+
+  it.skipIf(usingPostgres)("if saving the fee fails, the transfer is not left behind either", async () => {
+    const { user, bank, cash } = await setup();
+    fakeDb!.__failNext("transaction.create");
+    const res = await transfer({ fromAccountId: bank.id, toAccountId: cash.id, amount: 1_000, fee: 5, feeBucketId: "spend" }).catch(() => null);
+    expect(res === null || res.status === 500).toBe(true);
+    expect(await testDb.transfer.count({})).toBe(0);
+    expect(await testDb.transaction.count({ where: { userId: user.id, type: "e" } })).toBe(0);
   });
 });

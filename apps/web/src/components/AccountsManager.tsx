@@ -26,10 +26,13 @@ export function AccountsManager({
   accounts,
   transfers,
   unassignedCount,
+  buckets,
 }: {
   accounts: AccountView[];
   transfers: TransferView[];
   unassignedCount: number;
+  /** Active plan buckets, for the bucket a transfer fee is spent from */
+  buckets: { id: string; name: string; emoji: string }[];
 }) {
   const router = useRouter();
   const today = toDateInputValue(new Date());
@@ -56,6 +59,7 @@ export function AccountsManager({
   const [amount, setAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [fee, setFee] = useState("");
+  const [feeBucket, setFeeBucket] = useState(buckets.find((b) => b.id === "spend")?.id ?? buckets[0]?.id ?? "");
   const [tDate, setTDate] = useState(today);
   const [tNote, setTNote] = useState("");
   const [tRef, setTRef] = useState("");
@@ -134,6 +138,7 @@ export function AccountsManager({
       amount: Number(amount),
       toAmount: crossCurrency ? Number(toAmount) : null,
       fee: fee ? Number(fee) : null,
+      feeBucketId: fee && buckets.length > 0 ? feeBucket : null,
       date: tDate,
       note: tNote.trim() || null,
       reference: tRef.trim() || null,
@@ -291,7 +296,6 @@ export function AccountsManager({
                 Opened {a.openingDate} with {money(a.openingBalance, a.currency)}
                 {a.kind === "liability" ? " owed" : ""} · {a.eventCount} recorded movement
                 {a.eventCount === 1 ? "" : "s"}
-                {a.fees > 0 ? ` · ${money(a.fees, a.currency)} in transfer fees` : ""}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -377,7 +381,6 @@ export function AccountsManager({
                               adjustment: "Balance adjustment",
                             }[e.kind]}
                             {e.note ? <span className="muted"> · {e.note}</span> : null}
-                            {e.fee > 0 ? <span className="muted"> · fee {money(e.fee, a.currency)}</span> : null}
                           </td>
                           <td style={{ padding: "4px 6px", textAlign: "right", whiteSpace: "nowrap" }}>
                             {e.amount < 0 ? "−" : "+"}
@@ -543,11 +546,27 @@ export function AccountsManager({
               <input className="minp" aria-label="Note" placeholder="Note (optional)" maxLength={500} value={tNote} onChange={(e) => setTNote(e.target.value)} />
               <input className="minp" aria-label="Reference" placeholder="Reference (optional)" maxLength={120} value={tRef} onChange={(e) => setTRef(e.target.value)} />
             </div>
+            {Number(fee) > 0 && buckets.length > 0 && (
+              <select
+                className="minp"
+                aria-label="Bucket the fee is spent from"
+                value={feeBucket}
+                onChange={(e) => setFeeBucket(e.target.value)}
+              >
+                {buckets.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    Fee from: {b.emoji} {b.name}
+                  </option>
+                ))}
+              </select>
+            )}
             <p className="muted" style={{ fontSize: 13 }}>
               This only records that money moved. It is not income or spending,
               and nothing leaves FinTrack.
               {crossCurrency && " The accounts use different currencies, so enter what arrived: we never assume a conversion."}
-              {fee ? " The fee is taken from the sending account." : ""}
+              {fee
+                ? " The fee is a real cost: it is recorded as an expense, taken from the sending account and from the bucket you choose."
+                : ""}
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -587,7 +606,7 @@ export function AccountsManager({
                     {t.toAmount !== t.fromAmount || accounts.find((a) => a.id === t.fromAccountId)?.currency !== accounts.find((a) => a.id === t.toAccountId)?.currency
                       ? `, ${money(t.toAmount, accounts.find((a) => a.id === t.toAccountId)?.currency ?? "NGN")} received`
                       : ""}
-                    {t.fee > 0 ? ` · fee ${money(t.fee, accounts.find((a) => a.id === t.fromAccountId)?.currency ?? "NGN")}` : ""}
+                    {t.fee > 0 ? ` · fee ${money(t.fee, accounts.find((a) => a.id === t.fromAccountId)?.currency ?? "NGN")} (recorded as an expense)` : ""}
                   </div>
                 </div>
                 {!t.locked && (

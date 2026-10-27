@@ -232,8 +232,9 @@ describe("accountMovementForMonth", () => {
     { accountId: "bank", type: "i" as const, amount: 50_000, currency: "NGN", date: at(2026, 9, 3) },
     { accountId: "bank", type: "e" as const, amount: 10_000, currency: "NGN", date: at(2026, 9, 10) },
     { accountId: "bank", type: "e" as const, amount: 999, currency: "NGN", date: at(2026, 8, 20) }, // earlier month
+    { accountId: "bank", type: "e" as const, amount: 50, currency: "NGN", date: at(2026, 9, 12) }, // the transfer's fee, an ordinary expense
   ];
-  const transfers = [{ fromAccountId: "bank", toAccountId: "cash", fromAmountMinor: toMinor(20_000), toAmountMinor: toMinor(20_000), feeMinor: toMinor(50), date: at(2026, 9, 12) }];
+  const transfers = [{ fromAccountId: "bank", toAccountId: "cash", fromAmountMinor: toMinor(20_000), toAmountMinor: toMinor(20_000), date: at(2026, 9, 12) }];
   const run = (month: string) =>
     accountMovementForMonth({ accounts: [bank, cash], txs, transfers, adjustments: [], month });
 
@@ -241,12 +242,11 @@ describe("accountMovementForMonth", () => {
     const sep = run("2026-09");
     const b = sep.find((m) => m.accountId === "bank")!;
     assert.equal(b.startMinor, toMinor(100_000 - 999));
-    assert.equal(b.endMinor, toMinor(100_000 - 999 + 50_000 - 10_000 - 20_000 - 50));
+    assert.equal(b.endMinor, toMinor(100_000 - 999 + 50_000 - 10_000 - 50 - 20_000));
     assert.equal(b.netMinor, b.endMinor - b.startMinor);
     assert.equal(b.incomeMinor, toMinor(50_000));
-    assert.equal(b.expenseMinor, toMinor(10_000));
+    assert.equal(b.expenseMinor, toMinor(10_000 + 50)); // includes the fee
     assert.equal(b.transfersOutMinor, toMinor(20_000));
-    assert.equal(b.feesMinor, toMinor(50));
     const c = sep.find((m) => m.accountId === "cash")!;
     assert.equal(c.netMinor, toMinor(20_000));
     assert.equal(c.transfersInMinor, toMinor(20_000));
@@ -255,7 +255,7 @@ describe("accountMovementForMonth", () => {
   it("the transfer moves the same money out of one account and into the other", () => {
     const sep = run("2026-09");
     const net = sep.reduce((s, m) => s + m.netMinor, 0);
-    // Total across accounts changes only by real income, expenses and the fee
+    // Total across accounts changes only by real income and expenses (the fee is one of them)
     assert.equal(net, toMinor(50_000 - 10_000 - 50));
   });
 
@@ -287,7 +287,7 @@ describe("savings and investment contributions come only from transfers", () => 
     { id: "card", type: "credit_card", currency: "NGN" },
   ];
   const tr = (from: string, to: string, amount: number, date: Date, toAmount = amount) => ({
-    fromAccountId: from, toAccountId: to, fromAmountMinor: toMinor(amount), toAmountMinor: toMinor(toAmount), feeMinor: 0, date,
+    fromAccountId: from, toAccountId: to, fromAmountMinor: toMinor(amount), toAmountMinor: toMinor(toAmount), date,
   });
 
   it("counts money moved into savings, and back out, per month", () => {
