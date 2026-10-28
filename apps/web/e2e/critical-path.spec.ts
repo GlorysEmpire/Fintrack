@@ -180,3 +180,18 @@ for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard
     expect(nameless, "buttons or links with no name").toEqual([]);
   });
 }
+
+test("the app is installable: manifest, icons and the offline screen are served", async ({ request, page }) => {
+  const manifest = await (await request.get("/manifest.webmanifest")).json();
+  expect(manifest).toMatchObject({ name: "FinTrack", display: "standalone", start_url: "/dashboard" });
+  for (const icon of manifest.icons as { src: string }[]) {
+    const res = await request.get(icon.src);
+    expect(res.status(), icon.src).toBe(200);
+    expect(res.headers()["content-type"]).toContain("image/png");
+  }
+  const sw = await request.get("/sw.js");
+  expect(sw.status()).toBe(200);
+  expect(sw.headers()["cache-control"]).toContain("no-store"); // a new version must always be picked up
+  await page.goto("/offline.html");
+  await expect(page.getByRole("heading", { name: "You are offline" })).toBeVisible();
+});

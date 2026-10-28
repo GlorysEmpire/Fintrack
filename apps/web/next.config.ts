@@ -23,6 +23,9 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
+  // The installable app: its service worker and manifest come from this site only
+  "worker-src 'self'",
+  "manifest-src 'self'",
 ].join("; ");
 
 const securityHeaders = [
@@ -43,7 +46,17 @@ const nextConfig: NextConfig = {
   // Do not advertise the framework
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // The service worker must always be re-checked, or an update would never arrive
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+    ];
   },
 };
 
