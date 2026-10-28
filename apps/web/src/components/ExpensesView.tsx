@@ -6,6 +6,7 @@ import { activeBuckets, amountInBase, formatMoney, sortBucketsByPlanOrder, type 
 import { cn } from "@/lib/utils";
 import type { TxRow } from "@/lib/tx-row";
 import { EmptyState } from "./EmptyState";
+import { FitMoney } from "./FitMoney";
 import { TransactionList } from "./TransactionList";
 import { useLogSheet } from "./log/LogSheetProvider";
 import { MetricCard } from "./overview/MetricCard";
@@ -52,7 +53,6 @@ export function ExpensesView({
 }) {
   const { open: openLog } = useLogSheet();
   const [bucket, setBucket] = useState<string>("all");
-  const base = baseCurrency as CurrencyCode;
 
   const chips = useMemo(() => {
     const counts = new Map<string, number>();
@@ -89,7 +89,7 @@ export function ExpensesView({
       <Upcoming items={upcoming} />
       <div className="m-grid">
         <MetricCard icon={ArrowUpRight} chipClassName="bg-destructive/12 text-destructive" label="Spent" sub={`${shown.length} ${shown.length === 1 ? "expense" : "expenses"}`} valueClassName="text-destructive">
-          {formatMoney(total, base)}
+          <FitMoney amount={total} currency={baseCurrency} />
         </MetricCard>
       </div>
 

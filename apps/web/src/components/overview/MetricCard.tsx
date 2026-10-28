@@ -28,7 +28,7 @@ export function MetricCard({
       >
         <Icon className="h-5 w-5" />
       </span>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="m-lbl">{label}</div>
         <div className={cn("m-val", valueClassName)}>{children}</div>
         <div className="m-sub">{sub}</div>

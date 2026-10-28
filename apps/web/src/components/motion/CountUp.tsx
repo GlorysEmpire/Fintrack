@@ -1,6 +1,6 @@
 "use client";
 
-import { Money } from "@/components/Money";
+import { FitMoney } from "@/components/FitMoney";
 import { useCountUp } from "@/hooks/useCountUp";
 
 /** A money amount that counts to its new value (M1). Jumps under reduced motion. */
@@ -16,5 +16,5 @@ export function CountUp({
   signed?: boolean;
 }) {
   const shown = useCountUp(value);
-  return <Money amount={shown} currency={currency} className={className} signed={signed} />;
+  return <FitMoney amount={shown} currency={currency} className={className} signed={signed} />;
 }

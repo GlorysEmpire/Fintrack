@@ -13,6 +13,7 @@ import { toDateInputValue } from "@/lib/format-date";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { InfoTip } from "@/components/ui/info-tip";
 import { AccountTile } from "./accounts/AccountTile";
+import { formatCompactMoney } from "@/lib/format-compact";
 import type { AccountEvent, AccountView } from "@/lib/accounts";
 import type { TransferView } from "@/lib/transfers";
 
@@ -278,6 +279,7 @@ export function AccountsManager({
             institution={a.institution}
             currency={a.currency}
             amountText={`${a.kind !== "liability" && a.balance < 0 ? "−" : ""}${money(a.kind === "liability" ? a.owed : a.balance, a.currency)}`}
+            compactText={`${a.kind !== "liability" && a.balance < 0 ? "−" : ""}${formatCompactMoney(a.kind === "liability" ? a.owed : a.balance, a.currency)}`}
             amountCaption={a.kind === "liability" ? "owed" : undefined}
             status={a.status}
             belowZero={a.belowZero}

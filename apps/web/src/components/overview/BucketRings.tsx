@@ -14,6 +14,7 @@ import {
 } from "@fintrack/domain";
 import { bucketColor } from "@/lib/bucket-colors";
 import { InfoTip } from "@/components/ui/info-tip";
+import { FitMoney } from "../FitMoney";
 import { ProgressRing } from "./ProgressRing";
 import { SectionTitle } from "./SectionTitle";
 
@@ -90,12 +91,9 @@ export function BucketRings({ plan, states, base, scope }: Props) {
                     {c.meta.carryOver ? " · carries over" : " · resets monthly"}
                   </InfoTip>
                 </div>
-                <div className="font-display text-base font-semibold tabular-nums" style={{ color: c.over ? c.color : undefined }}>
-                  {c.over ? "−" : ""}
-                  {formatMoney(Math.abs(c.left), base)} <span className="text-xs font-normal text-muted-foreground">left</span>
-                </div>
+                <FitMoney amount={c.over ? -Math.abs(c.left) : c.left} currency={base} className="text-base font-semibold" />
                 <div className="text-xs text-subtle">
-                  of {formatMoney(c.alloc, base)}
+                  left of {formatMoney(c.alloc, base)}
                   {c.status && <span style={{ color: c.color }}> · {c.status}</span>}
                 </div>
               </div>

@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import {
   amountInBase,
   filterMonthTxs,
-  formatMoney,
   type CurrencyCode,
   type MoneyTx,
 } from "@fintrack/domain";
@@ -17,6 +16,7 @@ import { parseFx } from "@/lib/money";
 import { AppShell } from "@/components/AppShell";
 import { IncomeSourcesManager } from "@/components/IncomeSourcesManager";
 import { PageHeader } from "@/components/PageHeader";
+import { FitMoney } from "@/components/FitMoney";
 import { MetricCard } from "@/components/overview/MetricCard";
 import { ListChecks, Wallet } from "lucide-react";
 
@@ -86,7 +86,7 @@ export default async function IncomePage() {
       />
       <div className="m-grid">
         <MetricCard icon={Wallet} label="Logged this month" sub="all sources" valueClassName="text-primary">
-          {formatMoney(total, base)}
+          <FitMoney amount={total} currency={base} />
         </MetricCard>
         <MetricCard icon={ListChecks} label="Sources" sub={`${sourcesWithLogged.filter((s) => s.loggedBase > 0).length} logged this month`}>
           {sources.length}

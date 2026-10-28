@@ -16,6 +16,9 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { InfoTip } from "@/components/ui/info-tip";
+import { bucketColor } from "@/lib/bucket-colors";
 import {
   ALL_TEMPLATES,
   LAYER_COPY,
@@ -167,6 +170,7 @@ export function PlanEditor({
   );
   /** Field errors appear once the user has tried to save */
   const [attempted, setAttempted] = useState(false);
+  const reduceMotion = useReducedMotion();
   const [saving, setSaving] = useState(false);
   const [serverErrors, setServerErrors] = useState<string[]>([]);
   /** Set while the user is being asked to confirm a history-changing save */
@@ -385,10 +389,12 @@ export function PlanEditor({
           </option>
         ))}
       </select>
-      <p className="pe-help">
-        A template only fills in the editor below. Nothing is saved until you
-        press {mode === "onboarding" ? "Use this plan" : "Save plan"}, and you
-        can change every bucket first.
+      <p className="pe-help flex items-center gap-2">
+        About templates
+        <InfoTip label="About templates">
+          A template only fills in the editor below. Nothing is saved until you press{" "}
+          {mode === "onboarding" ? "Use this plan" : "Save plan"}, and you can change every bucket first.
+        </InfoTip>
       </p>
       {beforeTemplate && (
         <div className="pe-notice" role="status">
@@ -438,7 +444,7 @@ export function PlanEditor({
               const bucket = buckets.find((b) => b.id === d.id);
               const label = d.name.trim() || "this bucket";
               return (
-                <div className="pe-row" key={d.id}>
+                <motion.div className="pe-row" key={d.id} layout={reduceMotion ? false : "position"} transition={{ type: "spring", stiffness: 420, damping: 36 }}>
                   <div className="pe-line">
                     <input
                       className="minp pe-emoji"
@@ -570,7 +576,7 @@ export function PlanEditor({
                       {message}
                     </div>
                   ))}
-                </div>
+                </motion.div>
               );
             })}
 
@@ -756,6 +762,7 @@ function PlanPreview({
   valid: boolean;
   currency: CurrencyCode;
 }) {
+  const reduceMotion = useReducedMotion();
   const [sample, setSample] = useState("100000");
   const gross = parseNumber(sample);
   const result =
@@ -783,28 +790,47 @@ function PlanPreview({
         <span className="pe-unit">{currency}</span>
       </div>
       {!result ? (
-        <p className="muted" style={{ marginTop: 10 }}>
-          The preview appears once the plan has no errors and the income is a
-          number.
+        <p className="mt-2.5 text-sm text-muted-foreground">
+          The preview appears once the plan has no errors and the income is a number.
         </p>
       ) : (
-        <div style={{ marginTop: 10 }}>
-          {result.lines.map((line) => (
-            <div className="pe-preview-row" key={line.bucketId}>
-              <span>
-                {line.emoji} {line.name}
-              </span>
-              <span className="font-mono tabular-nums">
-                {formatMoney(line.allocated, currency)}{" "}
-                <span className="muted">
-                  ({Number(line.percentOfGross.toFixed(1))}%)
+        <div className="mt-3">
+          <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label="How the income is split">
+            {result.lines.map((line, i) => (
+              <motion.div
+                key={line.bucketId}
+                layout={reduceMotion ? false : "position"}
+                className="h-full"
+                style={{ background: bucketColor(line.bucketId, i), width: `${Math.max(0, line.percentOfGross)}%` }}
+              />
+            ))}
+          </div>
+          <div className="mt-2">
+            {result.lines.map((line, i) => (
+              <div className="pe-preview-row" key={line.bucketId}>
+                <span className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: bucketColor(line.bucketId, i) }} aria-hidden />
+                  {line.emoji} {line.name}
                 </span>
-              </span>
-            </div>
-          ))}
-          <p className="muted" style={{ marginTop: 8 }}>
-            The plan is applied to each month&apos;s total income, so a fixed
-            amount is filled once per month however many payments you receive.
+                <span className="font-display tabular-nums">
+                  {formatMoney(line.allocated, currency)}{" "}
+                  <span className="text-muted-foreground">({Number(line.percentOfGross.toFixed(1))}%)</span>
+                </span>
+              </div>
+            ))}
+            {result.unallocated > 0.005 && (
+              <div className="pe-preview-row">
+                <span className="text-muted-foreground">Not allocated to any bucket</span>
+                <span className="font-display tabular-nums text-muted-foreground">{formatMoney(result.unallocated, currency)}</span>
+              </div>
+            )}
+          </div>
+          <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            How this is worked out
+            <InfoTip label="About the preview">
+              The plan is applied to each month&apos;s total income, so a fixed amount is filled once per month however many
+              payments you receive.
+            </InfoTip>
           </p>
         </div>
       )}

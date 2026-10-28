@@ -252,6 +252,56 @@ test("the name set in Plan is how the app greets you", async ({ page }) => {
   await expect(page.getByText(/Good (morning|afternoon|evening), Glory$/)).toBeVisible();
 });
 
+test("big numbers never spill out of their cards, from a 320px phone to a wide desktop", async ({ page }) => {
+  const user = await signedInUser(page);
+  // Very large balances, to push every card as far as it can go
+  await prisma.transaction.create({ data: { userId: user.id, type: "i", amount: 987_654_321_098.76, currency: "NGN", date: new Date() } });
+  await prisma.transaction.create({ data: { userId: user.id, type: "e", amount: 12_345_678_901.23, currency: "NGN", bucketId: "spend", category: "food", note: "A very large and very long description to test wrapping", date: new Date() } });
+  await prisma.incomeSource.create({ data: { userId: user.id, name: "Consulting retainer", amount: 999_999_999_999.99 } });
+  for (const [name, type, opening] of [["Main account with a rather long name", "bank", 123_456_789_012.34], ["Card", "credit_card", 9_876_543_210.5]] as const) {
+    const res = await page.request.post("/api/accounts", { data: { name, type, openingBalance: opening, openingDate: "2026-01-01", currency: "NGN", institution: null } });
+    expect(res.ok()).toBeTruthy();
+  }
+
+  for (const width of [320, 360, 390, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ["/dashboard", "/accounts", "/income", "/expenses"]) {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(600); // let every number settle (count-up, fitting)
+      const problems = await page.evaluate(() => {
+        const out: string[] = [];
+        if (document.documentElement.scrollWidth > window.innerWidth) out.push("the page scrolls sideways");
+        document.querySelectorAll<HTMLElement>("[data-fit]").forEach((el) => {
+          const label = (el.getAttribute("aria-label") || el.textContent || "").slice(0, 30);
+          if (el.scrollWidth > el.clientWidth + 1) out.push(`"${label}" is clipped`);
+          const card = el.closest<HTMLElement>(".card, .metric, button, .tx-row, .bucket-card");
+          if (card) {
+            const a = el.getBoundingClientRect();
+            const c = card.getBoundingClientRect();
+            if (a.right > c.right + 1 || a.left < c.left - 1) out.push(`"${label}" spills out of its card`);
+          }
+        });
+        return out;
+      });
+      expect(problems, `${path} at ${width}px`).toEqual([]);
+      // The check is only meaningful if the numbers are really there: and on the narrowest phone, the biggest ones shrink
+      expect(await page.locator("[data-fit]").count(), `${path} has fitted numbers`).toBeGreaterThanOrEqual({ "/dashboard": 3, "/accounts": 2, "/income": 1, "/expenses": 2 }[path] ?? 1);
+      if (width === 1280 && path === "/dashboard") {
+        // Squeeze the biggest number into a sliver: it must shorten (₦987B…) or shrink, and still not spill
+        const squeezed = await page.evaluate(async () => {
+          const el = document.querySelector<HTMLElement>("[data-fit]")!;
+          el.parentElement!.style.width = "64px";
+          await new Promise((r) => setTimeout(r, 400));
+          return { clipped: el.scrollWidth > el.clientWidth + 1, adjusted: Boolean(el.title) || (el.firstElementChild as HTMLElement).style.fontSize !== "1em", full: el.title };
+        });
+        expect(squeezed.clipped).toBe(false);
+        expect(squeezed.adjusted).toBe(true);
+      }
+    }
+  }
+});
+
 for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard", "/expenses", "/advisor", "/inbox", "/income"]) {
   test(`${path} fits a phone and its controls have names`, async ({ page }) => {
     await signedInUser(page);

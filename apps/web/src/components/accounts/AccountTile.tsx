@@ -1,5 +1,6 @@
 import { Banknote, CreditCard, Landmark, LineChart, PiggyBank, Wallet, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FitText } from "../FitText";
 
 /** How each kind of account looks: its icon and its card colour (all from theme tokens) */
 const LOOK: Record<string, { icon: LucideIcon; card: string }> = {
@@ -24,6 +25,7 @@ export function AccountTile({
   institution,
   currency,
   amountText,
+  compactText,
   amountCaption,
   status,
   belowZero,
@@ -38,6 +40,8 @@ export function AccountTile({
   currency: string;
   /** The balance, or the amount owed, already formatted */
   amountText: string;
+  /** The short form (₦1.28M) for a space too small for amountText */
+  compactText: string;
   amountCaption?: string;
   status: string;
   belowZero: boolean;
@@ -75,7 +79,7 @@ export function AccountTile({
         </span>
       </span>
       <span>
-        <span className="block font-display text-2xl font-bold tabular-nums tracking-tight">{amountText}</span>
+        <FitText className="font-display text-2xl font-bold tabular-nums tracking-tight" text={amountText} compact={compactText} full={amountText} />
         <span className="flex items-center gap-2 text-xs text-muted-foreground">
           {amountCaption}
           {belowZero && <span className="rounded-full bg-destructive/20 px-2 py-0.5 font-semibold text-destructive">below zero</span>}

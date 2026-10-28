@@ -29,7 +29,7 @@ import { formatTxDate, toDateInputValue } from "@/lib/format-date";
 import type { TxRow } from "@/lib/tx-row";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { LogTransactionModal, type AccountOption } from "./LogTransactionModal";
-import { Money } from "./Money";
+import { FitMoney } from "./FitMoney";
 import { toast } from "@/components/ui/toast";
 
 type Source = {
@@ -187,7 +187,7 @@ export function TransactionList({
 
               <div className="tx-side">
                 <div className={t.type === "i" ? "amt-pos" : "amt-neg"}>
-                  <Money
+                  <FitMoney
                     amount={t.type === "i" ? t.amount : -t.amount}
                     currency={t.currency}
                     signed
