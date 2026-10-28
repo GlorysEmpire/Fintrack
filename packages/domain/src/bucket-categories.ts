@@ -92,7 +92,7 @@ export const BUCKET_ALLOWED_CATEGORIES: Record<string, string[]> = {
 };
 
 export const BUCKET_DESCRIPTIONS: Record<string, string> = {
-  spend: "Personal daily expenses and shopping for yourself",
+  spend: "Free choice: anything you want to spend, except tithe (which has its own bucket)",
   save: "Transport and commuting, recurring bills, debts, projects, subscriptions, household supplies",
   give: "Church offering, helping others, family support",
   invest: "Business expenses and investments that generate income",
@@ -100,8 +100,16 @@ export const BUCKET_DESCRIPTIONS: Record<string, string> = {
   tithe: "Tithe payments only",
 };
 
+/**
+ * Spend is the free-choice bucket: anything may be spent from it. The one
+ * exception is a tithe payment, which has its own bucket and so is never spent
+ * from Spend.
+ */
+const NEVER_FROM_SPEND = new Set(["tithe_payment"]);
+
 export function isCrossBucket(bucketId: string, categoryId: string | null | undefined): boolean {
   if (!bucketId || !categoryId) return false;
+  if (bucketId === "spend") return NEVER_FROM_SPEND.has(categoryId);
   const allowed = BUCKET_ALLOWED_CATEGORIES[bucketId];
   if (!allowed) return false; // unknown custom bucket: no rule
   return !allowed.includes(categoryId);

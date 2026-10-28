@@ -20,3 +20,8 @@ apps/web/prisma/*.db-journal
 # Playwright output
 test-results/
 playwright-report/
+
+# Private notes stay on the owner machine, never in this public repo
+docs/
+OWNER-NEXT-STEPS.md
+LAUNCH-READINESS.md
