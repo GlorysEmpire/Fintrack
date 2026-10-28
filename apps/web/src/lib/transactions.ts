@@ -29,6 +29,7 @@ import {
   isCrossBucket,
   monthKeyOf,
   resolveTransactionDate,
+  toMinor,
   transactionLockState,
   type CurrencyCode,
   type ExpenseFriction,
@@ -484,6 +485,7 @@ async function createUnlocked(
         userId: user.id,
         type: "i",
         amount: input.amount,
+        amountMinor: BigInt(toMinor(input.amount)),
         currency: input.currency,
         sourceId,
         note: clean(input.note) || null,
@@ -520,6 +522,7 @@ async function createUnlocked(
       userId: user.id,
       type: "e",
       amount: input.amount,
+      amountMinor: BigInt(toMinor(input.amount)),
       currency: input.currency,
       bucketId: check.bucketId,
       category: check.category,
@@ -661,7 +664,7 @@ async function updateUnlocked(
     }
     const transaction = await prisma.transaction.update({
       where: { id: existing.id, userId: user.id },
-      data: { amount, currency, sourceId, note: note || null, date, accountId },
+      data: { amount, amountMinor: BigInt(toMinor(amount)), currency, sourceId, note: note || null, date, accountId },
     });
     return { status: "ok", transaction, crossBucket: false };
   }
@@ -689,6 +692,7 @@ async function updateUnlocked(
     where: { id: existing.id, userId: user.id },
     data: {
       amount,
+      amountMinor: BigInt(toMinor(amount)),
       currency,
       bucketId: check.bucketId,
       category: check.category,

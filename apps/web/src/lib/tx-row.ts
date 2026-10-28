@@ -41,3 +41,13 @@ export function toTxRow(t: Transaction): TxRow {
     createdAt: t.createdAt.toISOString(),
   };
 }
+
+/**
+ * A transaction as an API response: the same fields as always. The exact
+ * whole-minor-unit amount (a BigInt, which JSON can not carry) stays on the server.
+ */
+export function publicTransaction<T extends { amountMinor?: bigint | null }>(t: T): Omit<T, "amountMinor"> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { amountMinor: _exact, ...rest } = t;
+  return rest;
+}

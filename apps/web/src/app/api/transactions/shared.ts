@@ -1,6 +1,7 @@
 /**
  * Request shapes and response mapping shared by the transaction routes.
  */
+import { publicTransaction } from "@/lib/tx-row";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
@@ -59,7 +60,7 @@ export function transactionResponse(result: TransactionResult) {
     case "ok":
       return NextResponse.json({
         ok: true,
-        transaction: result.transaction,
+        transaction: publicTransaction(result.transaction),
         crossBucket: result.crossBucket,
       });
     case "invalid":

@@ -194,6 +194,7 @@ async function createUnlocked(
           userId,
           type: "e",
           amount: fromMinor(shape.feeMinor),
+          amountMinor: BigInt(shape.feeMinor),
           currency: from.currency,
           bucketId: check.bucketId,
           category: null,

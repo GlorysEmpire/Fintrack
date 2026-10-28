@@ -200,6 +200,9 @@ model Transaction {
   /// "i" = income · "e" = expense
   type            String
   amount          Float
+  /// The same amount in whole minor units (kobo/cents), exact. Written with every amount; the Float above is
+  /// still what the app reads while the move to minor units is finished. Null only on rows older than this column.
+  amountMinor     BigInt?
   currency        String         @default("NGN")
   bucketId        String?
   category        String?

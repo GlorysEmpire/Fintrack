@@ -3,6 +3,7 @@
  * One payload for the overview: month income/expenses, waterfall, bucket states,
  * recent transactions, sources. Keeps the page from making many round-trips.
  */
+import { publicTransaction } from "@/lib/tx-row";
 import { NextResponse } from "next/server";
 import {
   filterMonthTxs,
@@ -84,7 +85,7 @@ export async function GET() {
       buckets: snap.buckets,
     },
     sampleWaterfall,
-    transactions: monthRows,
-    recentAll: recentRows,
+    transactions: monthRows.map(publicTransaction),
+    recentAll: recentRows.map(publicTransaction),
   });
 }

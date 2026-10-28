@@ -7,6 +7,7 @@
  * requires note or reason text. Optional `date` ("YYYY-MM-DD") files it under
  * an earlier day.
  */
+import { publicTransaction } from "@/lib/tx-row";
 import { NextResponse } from "next/server";
 import { startOfMonth } from "@fintrack/domain";
 import { routeError, unauthorized } from "@/lib/api";
@@ -29,13 +30,13 @@ export async function GET(req: Request) {
   });
 
   if (!monthOnly) {
-    return NextResponse.json({ ok: true, transactions: txs });
+    return NextResponse.json({ ok: true, transactions: txs.map(publicTransaction) });
   }
 
   // Current calendar month (Lagos time)
   const start = startOfMonth();
   const monthRows = txs.filter((t) => t.date >= start);
-  return NextResponse.json({ ok: true, transactions: monthRows });
+  return NextResponse.json({ ok: true, transactions: monthRows.map(publicTransaction) });
 }
 
 export async function POST(req: Request) {
