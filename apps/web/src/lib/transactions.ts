@@ -19,7 +19,10 @@ import {
   LOCKED_EXPLANATION,
   MONEY_EPSILON,
   amountInBase,
+  bucketHeadsUp,
+  daysLeftInMonth,
   dateKeyInTimeZone,
+  headsUpDraft,
   bucketAvailableOn,
   expenseFriction,
   formatMoney,
@@ -36,7 +39,7 @@ import { checkAccountForEvent } from "./accounts";
 import { prisma } from "./db";
 import { reallocationTxs } from "./reallocations";
 import { APP_TIME_ZONE } from "./format-date";
-import { createOverrideInboxMessage } from "./inbox";
+import { createOverrideInboxMessage, headsUpSince, writeSteward } from "./inbox";
 import { parseFx } from "./money";
 import { getUserPlan } from "./plan";
 import { withUserLock } from "./user-lock";
@@ -395,6 +398,38 @@ async function writeOverrideNote(
 }
 
 /**
+ * Steward's heads-up when this expense takes a bucket to running low or uses it up.
+ * Never allowed to get in the way of saving the expense itself.
+ */
+async function writeHeadsUp(
+  user: SessionUser,
+  tx: Transaction,
+  check: Extract<ExpenseCheck, { ok: true }>,
+  now: Date
+) {
+  try {
+    const f = check.friction;
+    if (!f || !check.bucketId || monthKeyOf(tx.date) !== monthKeyOf(now)) return;
+    const base = user.baseCurrency as CurrencyCode;
+    const amount = amountInBase(tx.amount, tx.currency, user.baseCurrency, parseFx(user.fxRates));
+    const kind = bucketHeadsUp({ allocated: f.allocated, remainingBefore: f.remaining, amount });
+    if (!kind) return;
+    const left = Math.max(0, f.remaining - amount);
+    const daysLeft = daysLeftInMonth(now);
+    const draft = headsUpDraft(kind, {
+      bucketName: check.bucketName,
+      leftLabel: formatMoney(left, base),
+      ofLabel: formatMoney(f.allocated, base),
+      daysLeft,
+      perDayLabel: daysLeft > 0 && left > 0 ? formatMoney(left / daysLeft, base) : null,
+    });
+    await writeSteward({ userId: user.id, kind: "plan_tip", ...draft, since: headsUpSince(now), relatedTxId: tx.id });
+  } catch (e) {
+    console.error("Steward heads-up failed", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
  * Recording an expense reads the bucket's balance and then writes, so it runs
  * under the user's lock: see user-lock.ts. Income takes no money from a bucket.
  */
@@ -525,6 +560,7 @@ async function createUnlocked(
   }
 
   await writeOverrideNote(user, transaction, check, false);
+  await writeHeadsUp(user, transaction, check, now);
   return { status: "ok", transaction, crossBucket: check.cross };
 }
 

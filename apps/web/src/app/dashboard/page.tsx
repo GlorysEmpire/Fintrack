@@ -121,6 +121,7 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       email={user.email}
+      name={user.name}
       baseCurrency={user.baseCurrency}
       onboarding={user.onboarding}
       hasPassword={Boolean(user.passwordHash)}

@@ -31,6 +31,7 @@ type Msg = { id?: string; role: string; content: string };
 export function AdvisorClient({
   baseCurrency,
   email,
+  name,
   inboxUnread,
   liveAi,
   initialMessages,
@@ -38,6 +39,7 @@ export function AdvisorClient({
 }: {
   baseCurrency: string;
   email: string;
+  name?: string | null;
   inboxUnread: number;
   liveAi: boolean;
   initialMessages: Msg[];
@@ -93,7 +95,8 @@ export function AdvisorClient({
   }
 
   return (
-    <AppShell baseCurrency={baseCurrency} email={email} inboxUnread={inboxUnread}>
+    <AppShell baseCurrency={baseCurrency} email={email}
+      name={name} inboxUnread={inboxUnread}>
       <PageHeader
         title="Advisor"
         infoLabel="About the Advisor"

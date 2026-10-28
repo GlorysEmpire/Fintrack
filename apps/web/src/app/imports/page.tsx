@@ -27,7 +27,8 @@ export default async function ImportsPage() {
   ]);
 
   return (
-    <AppShell baseCurrency={user.baseCurrency} email={user.email} inboxUnread={inboxUnread}>
+    <AppShell baseCurrency={user.baseCurrency} email={user.email}
+      name={user.name} inboxUnread={inboxUnread}>
       <h1 style={{ fontSize: 20, marginBottom: 8 }}>Bank imports</h1>
       <p className="sub">
         Read-only. FinTrack can look at a linked bank account&apos;s transactions

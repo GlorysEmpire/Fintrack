@@ -21,11 +21,13 @@ type Msg = {
 export function InboxClient({
   baseCurrency,
   email,
+  name,
   inboxUnread,
   messages: initial,
 }: {
   baseCurrency: string;
   email: string;
+  name?: string | null;
   inboxUnread: number;
   messages: Msg[];
 }) {
@@ -58,6 +60,7 @@ export function InboxClient({
     <AppShell
       baseCurrency={baseCurrency}
       email={email}
+      name={name}
       inboxUnread={inboxUnread}
     >
       <PageHeader

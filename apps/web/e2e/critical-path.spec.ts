@@ -241,6 +241,17 @@ test("the Advisor works with no online AI: notes, a guided answer and a delete t
   await expect(page.getByText("Am I on track this month?").first()).toBeVisible();
 });
 
+test("the name set in Plan is how the app greets you", async ({ page }) => {
+  await signedInUser(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/settings");
+  await page.getByLabel("Your name").fill("Glory Adebayo");
+  await page.getByRole("button", { name: "Save name" }).click();
+  await expect(page.getByText("Name saved")).toBeVisible();
+  await page.goto("/dashboard");
+  await expect(page.getByText(/Good (morning|afternoon|evening), Glory$/)).toBeVisible();
+});
+
 for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard", "/expenses", "/advisor", "/inbox", "/income"]) {
   test(`${path} fits a phone and its controls have names`, async ({ page }) => {
     await signedInUser(page);

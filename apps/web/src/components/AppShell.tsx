@@ -30,11 +30,14 @@ export function AppShell({
   children,
   baseCurrency,
   email,
+  name: savedName,
   inboxUnread = 0,
 }: {
   children: React.ReactNode;
   baseCurrency: string;
   email?: string;
+  /** The name set in Plan; the greeting falls back to a guess from the email */
+  name?: string | null;
   inboxUnread?: number;
 }) {
   const path = usePathname();
@@ -89,7 +92,7 @@ export function AppShell({
     router.refresh();
   }
 
-  const name = displayName(email);
+  const name = displayName(email, savedName);
 
   return (
     <LogSheetProvider>

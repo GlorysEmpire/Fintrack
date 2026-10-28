@@ -59,7 +59,8 @@ export default async function TrendsPage() {
   const anyConverted = view.months.some((m) => m.converted);
 
   return (
-    <AppShell baseCurrency={user.baseCurrency} email={user.email} inboxUnread={inboxUnread}>
+    <AppShell baseCurrency={user.baseCurrency} email={user.email}
+      name={user.name} inboxUnread={inboxUnread}>
       <PageHeader
         title="Trends"
         infoLabel="About trends"

@@ -20,6 +20,7 @@ export default async function InboxPage() {
     <InboxClient
       baseCurrency={user.baseCurrency}
       email={user.email}
+      name={user.name}
       inboxUnread={unread}
       messages={messages.map((m) => ({
         id: m.id,

@@ -37,7 +37,9 @@ export function pageTitle(path: string): string {
   return all.find((n) => isActive(path, n.href))?.label ?? "FinTrack";
 }
 
-export function displayName(email?: string): string {
+export function displayName(email?: string, saved?: string | null): string {
+  const given = saved?.trim().split(/\s+/)[0];
+  if (given) return given;
   const local = (email ?? "").split("@")[0].replace(/[._-]+/g, " ").trim();
   return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
 }

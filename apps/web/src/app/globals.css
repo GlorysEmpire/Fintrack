@@ -19,7 +19,7 @@
   --color-secondary-foreground: oklch(0.92 0.01 160);
   --color-destructive: oklch(0.62 0.2 20);
   --color-border: oklch(0.28 0.015 160);
-  --color-subtle: oklch(0.5 0.02 160);
+  --color-subtle: oklch(0.62 0.02 160);
   --color-warning: oklch(0.84 0.14 95);
   --color-ring: oklch(0.78 0.15 160);
   --color-bucket-tithe: oklch(0.68 0.14 300);
@@ -81,10 +81,10 @@
 }
 
 .light {
-  --color-subtle: oklch(0.55 0.02 160);
+  --color-subtle: oklch(0.5 0.02 160);
   --color-primary-soft: color-mix(in oklch, var(--color-primary) 14%, transparent);
   --color-destructive-soft: color-mix(in oklch, var(--color-destructive) 12%, transparent);
-  --gradient-money: linear-gradient(135deg, oklch(0.62 0.15 160), oklch(0.7 0.14 115));
+  --gradient-money: linear-gradient(135deg, oklch(0.58 0.15 160), oklch(0.64 0.14 115));
   --glow-primary: 0 0 24px color-mix(in oklch, var(--color-primary) 22%, transparent);
   --glow-primary-lg: 0 0 60px color-mix(in oklch, var(--color-primary) 18%, transparent);
   --surface-glass: color-mix(in oklch, var(--color-card) 82%, transparent);
@@ -726,3 +726,9 @@ label.mlbl { display: block; }
 }
 .unread-dot { animation: unread-pulse 2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .unread-dot { animation: none; } }
+
+/* Keyboard focus is always visible. :where keeps it from overriding any component's own focus style. */
+:where(a, button, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}

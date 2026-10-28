@@ -3,7 +3,18 @@
 import { useMemo, useState } from "react";
 import { LineChart, PieChart } from "lucide-react";
 import type { CurrencyCode, WaterfallResult } from "@fintrack/domain";
-import { AllocationChart, CashflowChart } from "../DashboardCharts";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// Chart.js is the heaviest script on the page, so it loads after the page is up
+const AllocationChart = dynamic(() => import("../DashboardCharts").then((m) => m.AllocationChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[200px] w-full" />,
+});
+const CashflowChart = dynamic(() => import("../DashboardCharts").then((m) => m.CashflowChart), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[200px] w-full" />,
+});
 import { monthlySeries, type SeriesTx } from "@/lib/monthly-series";
 import { cn } from "@/lib/utils";
 import { SectionTitle } from "./SectionTitle";

@@ -76,6 +76,7 @@ export default async function IncomePage() {
     <AppShell
       baseCurrency={user.baseCurrency}
       email={user.email}
+      name={user.name}
       inboxUnread={inboxUnread}
     >
       <PageHeader

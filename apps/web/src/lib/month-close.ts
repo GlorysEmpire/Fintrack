@@ -4,10 +4,15 @@
  * and compare to "month we are in now".
  */
 import { prisma } from "./db";
+import { writeSteward } from "./inbox";
 import { reallocationTxs } from "./reallocations";
 import {
+  formatMoney,
   monthKeyOf,
+  monthlyRecapDraft,
   openingBalancesForMonth,
+  transactionTotals,
+  type CurrencyCode,
   startOfMonth,
   startOfMonthOffset,
   sameOpeningBalances,
@@ -112,6 +117,7 @@ export async function ensureMonthPacked(
 
   if (!lastMonthPacked) {
     console.log("MONTH PACK: packed", { packedMonth: previous });
+    await writeRecap(userId, previous, moneyTxs, user.baseCurrency, fx);
     return { status: "packed" };
   }
 
@@ -124,6 +130,36 @@ export async function ensureMonthPacked(
     bucketsChanged: changedBucketCount(stored, expected),
   });
   return { status: "reconciled", before: stored, after: expected };
+}
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** Steward's short recap of the month that just ended. Skipped for a month with nothing recorded. */
+async function writeRecap(
+  userId: string,
+  month: string,
+  all: MoneyTx[],
+  baseCurrency: string,
+  fx: Record<string, number>
+) {
+  try {
+    const inMonth = all.filter((t) => (t.type === "i" || t.type === "e") && monthKeyOf(t.date) === month);
+    if (inMonth.length === 0) return;
+    const t = transactionTotals(inMonth, baseCurrency, fx);
+    const base = baseCurrency as CurrencyCode;
+    const [y, m] = month.split("-").map(Number);
+    const draft = monthlyRecapDraft({
+      monthLabel: `${MONTH_NAMES[m - 1]} ${y}`,
+      incomeLabel: formatMoney(t.income, base),
+      expensesLabel: formatMoney(t.expenses, base),
+      net: t.net,
+      netLabel: formatMoney(Math.abs(t.net), base),
+      expenseRate: t.income > 0 ? Math.round((t.expenses / t.income) * 100) : null,
+    });
+    await writeSteward({ userId, kind: "monthly_review", ...draft, since: new Date(0) });
+  } catch (e) {
+    console.error("Monthly recap failed", e instanceof Error ? e.message : e);
+  }
 }
 
 /** How many buckets' opening balances differ (for logging without amounts). */

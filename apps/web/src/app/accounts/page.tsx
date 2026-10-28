@@ -29,6 +29,7 @@ export default async function AccountsPage() {
     <AppShell
       baseCurrency={user.baseCurrency}
       email={user.email}
+      name={user.name}
       inboxUnread={inboxUnread}
     >
       <PageHeader

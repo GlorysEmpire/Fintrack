@@ -28,6 +28,7 @@ export default async function AdvisorPage() {
     <AdvisorClient
       baseCurrency={user.baseCurrency}
       email={user.email}
+      name={user.name}
       inboxUnread={inboxUnread}
       liveAi={hasXaiKey()}
       notes={steward.insights.slice(0, 4).map((i) => ({

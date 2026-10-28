@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { listRules } from "@/lib/recurring-rules";
 import { AppShell } from "@/components/AppShell";
 import { PageHeader } from "@/components/PageHeader";
+import { ProfileName } from "@/components/ProfileName";
 import { InfoTip } from "@/components/ui/info-tip";
 import { PlanSettings } from "@/components/PlanSettings";
 import { RecurringManager } from "@/components/RecurringManager";
@@ -39,6 +40,7 @@ export default async function SettingsPage() {
     <AppShell
       baseCurrency={user.baseCurrency}
       email={user.email}
+      name={user.name}
       inboxUnread={inboxUnread}
     >
       <PageHeader
@@ -50,6 +52,7 @@ export default async function SettingsPage() {
       <div className="card">
         <h2>Account</h2>
         <p style={{ marginTop: 6 }}>{user.email}</p>
+        <ProfileName initial={user.name ?? ""} />
         <p className="muted" style={{ marginTop: 4 }}>
           {user.passwordHash
             ? "Sign-in: email + password (email codes still work as backup)."

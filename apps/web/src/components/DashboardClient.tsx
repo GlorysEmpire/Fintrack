@@ -51,6 +51,7 @@ type Source = {
 
 type Props = {
   email: string;
+  name?: string | null;
   baseCurrency: string;
   onboarding: string;
   /** false for OTP-only accounts — soft prompt to set a password */
@@ -92,6 +93,7 @@ type Props = {
 export function DashboardClient(props: Props) {
   const {
     email,
+    name,
     baseCurrency,
     onboarding,
     hasPassword,
@@ -282,6 +284,7 @@ export function DashboardClient(props: Props) {
     <AppShell
       baseCurrency={baseCurrency}
       email={email}
+      name={name}
       inboxUnread={inboxUnread}
     >
       <div className="dash-toolbar">

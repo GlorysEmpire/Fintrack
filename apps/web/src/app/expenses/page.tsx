@@ -40,6 +40,7 @@ export default async function ExpensesPage() {
     <AppShell
       baseCurrency={user.baseCurrency}
       email={user.email}
+      name={user.name}
       inboxUnread={inboxUnread}
     >
       <PageHeader
