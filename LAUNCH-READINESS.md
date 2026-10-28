@@ -56,7 +56,7 @@ I could not inspect Neon. Before launch, confirm yourself:
 | Web tests, real PostgreSQL | `TEST_DATABASE_URL=postgresql://<you>@localhost:5432/fintrack_test npx vitest run` | The same tests on real constraints, locks and transactions. The harness refuses any non-local or non-"test" database. |
 | Financial-integrity suite | `src/test/integrity.test.ts` (runs in both of the above) | 120 seeded random operations for two users, with every balance, total, bucket and fee re-derived independently after each one. Checked to fail when the balance maths is broken. |
 | End-to-end, real browser | `cd apps/web && E2E_DATABASE_URL=postgresql://<you>@localhost:5432/fintrack_test E2E_BROWSER_CHANNEL=chrome npx playwright test` | Accounts, transfer with fee, bucket block, trends, export, read-only bank import, plus phone-width and form-label checks on six pages. **Refuses to start unless the database is local and named "test".** |
-| CI | `.github/workflows/ci.yml` | Migrates a throwaway PostgreSQL, type check, domain + web tests (both databases), audit fails on **critical** production vulnerabilities. End-to-end tests are not in CI yet. |
+| CI | `.github/workflows/ci.yml` | Migrates a throwaway PostgreSQL, type check, domain + web tests (both databases), audit fails on **critical** production vulnerabilities. End-to-end tests run in CI too (a Chromium job against the throwaway database); that CI job has not yet run on GitHub, so treat it as unverified until the first green run. |
 
 ## 6. Security
 

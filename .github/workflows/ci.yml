@@ -60,5 +60,16 @@ jobs:
           # Local, throwaway, and the name contains "test": the test harness refuses anything else
           TEST_DATABASE_URL: postgresql://fintrack:fintrack@localhost:5432/fintrack_test
 
+      - name: Install Chromium for the end-to-end tests
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests (real browser, throwaway database)
+        working-directory: apps/web
+        run: npx playwright test
+        env:
+          # The Playwright config refuses anything that is not a local database named "...test..."
+          E2E_DATABASE_URL: postgresql://fintrack:fintrack@localhost:5432/fintrack_test
+
       - name: Dependency audit (fails on critical in production dependencies)
         run: npm audit --omit=dev --audit-level=critical
