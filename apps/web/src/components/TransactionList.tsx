@@ -9,9 +9,12 @@
  * The lock shown here is a courtesy: the server works it out again from the
  * time the transaction was recorded and refuses edits to a locked one.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Pencil, Trash2 } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { transactionIcon } from "@/lib/category-icons";
+import { bucketColor } from "@/lib/bucket-colors";
 import {
   LOCKED_EXPLANATION,
   TRANSACTION_EDIT_WINDOW_HOURS,
@@ -107,6 +110,9 @@ export function TransactionList({
     }
   }
 
+  const reduce = useReducedMotion();
+  // Rows on screen at first paint don't animate; ones that arrive later slide in (M10)
+  const firstIds = useRef(new Set(rows.map((r) => r.id)));
   return (
     <>
       {rows.map((t) => {
@@ -114,9 +120,25 @@ export function TransactionList({
         const bucket = bucketOf(t.bucketId);
         const filedEarlier =
           toDateInputValue(t.date) !== toDateInputValue(t.createdAt);
+        const Icon = transactionIcon(t.type, t.category);
+        const tint = t.type === "i" ? "var(--color-primary)" : bucketColor(t.bucketId ?? "", 0);
         return (
-          <div className="tx-row" key={t.id} data-locked={lock.locked}>
+          <motion.div
+            className="tx-row"
+            key={t.id}
+            data-locked={lock.locked}
+            initial={reduce || firstIds.current.has(t.id) ? false : { opacity: 0, x: 16 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: reduce ? 0 : 0.25 }}
+          >
             <div className="tx-item">
+              <span
+                aria-hidden
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ color: tint, background: `color-mix(in oklab, ${tint} 16%, transparent)` }}
+              >
+                <Icon className="h-[18px] w-[18px]" />
+              </span>
               <div className="tx-main">
                 <div className="tx-name">
                   {label(t)}
@@ -205,7 +227,7 @@ export function TransactionList({
                 {formatTxDate(t.createdAt)}.
               </div>
             )}
-          </div>
+          </motion.div>
         );
       })}
 

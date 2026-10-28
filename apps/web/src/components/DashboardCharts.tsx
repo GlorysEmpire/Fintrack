@@ -1,141 +1,109 @@
 "use client";
 
 /**
- * Chart.js aesthetic pass — gradient fills, rounded bars, donut center total.
+ * Chart.js charts in the app's tokens: the allocation donut and the monthly
+ * cash-flow lines. Colours are read from the theme at draw time, charts redraw
+ * when the theme changes, and the draw-in is skipped under reduced motion.
  */
 import { useEffect, useRef } from "react";
+import { useTheme } from "next-themes";
 import {
   Chart,
   ArcElement,
-  BarElement,
   CategoryScale,
-  LinearScale,
-  Tooltip,
-  Legend,
   DoughnutController,
-  BarController,
-  type ChartConfiguration,
+  Filler,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip,
   type Plugin,
 } from "chart.js";
-import type { WaterfallResult } from "@fintrack/domain";
-import { formatMoney, type CurrencyCode } from "@fintrack/domain";
+import { formatMoney, type CurrencyCode, type WaterfallResult } from "@fintrack/domain";
 import { bucketColor } from "@/lib/bucket-colors";
+import { prefersReducedMotion, readChartTheme, type ChartTheme } from "@/lib/chart-theme";
+import type { MonthPoint } from "@/lib/monthly-series";
 
 Chart.register(
   ArcElement,
-  BarElement,
   CategoryScale,
-  LinearScale,
-  Tooltip,
-  Legend,
   DoughnutController,
-  BarController
+  Filler,
+  LineController,
+  LineElement,
+  LinearScale,
+  PointElement,
+  Tooltip
 );
 
-function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const full =
-    h.length === 3
-      ? h
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : h;
-  const n = parseInt(full, 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function makeVerticalGradient(
-  ctx: CanvasRenderingContext2D,
-  chartArea: { top: number; bottom: number },
-  color: string
-) {
-  const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-  g.addColorStop(0, color);
-  g.addColorStop(1, hexToRgba(color, 0.4));
-  return g;
-}
-
-const tooltipStyle = {
-  backgroundColor: "oklch(0.18 0.012 160 / 0.95)",
-  titleColor: "oklch(0.96 0.01 160)",
-  bodyColor: "oklch(0.96 0.01 160)",
-  borderColor: "oklch(0.28 0.015 160)",
-  borderWidth: 1,
-  cornerRadius: 8,
-  padding: 10,
-  displayColors: true,
-  boxPadding: 4,
-};
-
-function centerTotalPlugin(totalLabel: string): Plugin<"doughnut"> {
+function tooltipStyle(t: ChartTheme) {
   return {
-    id: "centerTotal",
-    afterDraw(chart) {
-      const { ctx, chartArea } = chart;
-      if (!chartArea) return;
-      const cx = (chartArea.left + chartArea.right) / 2;
-      const cy = (chartArea.top + chartArea.bottom) / 2;
-      ctx.save();
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "oklch(0.68 0.02 160)";
-      ctx.font = "600 10px system-ui, sans-serif";
-      ctx.fillText("TOTAL", cx, cy - 12);
-      ctx.fillStyle = "oklch(0.96 0.01 160)";
-      ctx.font =
-        "700 16px ui-monospace, SFMono-Regular, Menlo, monospace";
-      ctx.fillText(totalLabel, cx, cy + 8);
-      ctx.restore();
-    },
+    backgroundColor: t.surface,
+    titleColor: t.text,
+    bodyColor: t.text,
+    borderColor: t.border,
+    borderWidth: 1,
+    cornerRadius: 10,
+    padding: 10,
+    boxPadding: 4,
   };
 }
 
-export function DashboardCharts({
+function compact(n: number, base: CurrencyCode): string {
+  const sym = formatMoney(0, base).replace(/0/g, "");
+  if (n >= 1_000_000) return `${sym}${+(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${sym}${Math.round(n / 1_000)}k`;
+  return `${sym}${Math.round(n)}`;
+}
+
+/** Donut of what is left in each bucket, with the total in the middle */
+export function AllocationChart({
   waterfall,
   baseCurrency,
-  remainingMode = false,
 }: {
   waterfall: WaterfallResult;
   baseCurrency: string;
-  /** When true, line amounts are remaining balances (not allocation) */
-  remainingMode?: boolean;
 }) {
-  const donutRef = useRef<HTMLCanvasElement>(null);
-  const barRef = useRef<HTMLCanvasElement>(null);
-  const donutChart = useRef<Chart | null>(null);
-  const barChart = useRef<Chart | null>(null);
+  const ref = useRef<HTMLCanvasElement>(null);
+  const { resolvedTheme } = useTheme();
   const base = baseCurrency as CurrencyCode;
-  const gross = waterfall.gross;
 
   useEffect(() => {
-    if (!donutRef.current || !barRef.current) return;
-
+    if (!ref.current) return;
+    const t = readChartTheme();
     const labels = waterfall.lines.map((l) => `${l.emoji} ${l.name}`);
     const vals = waterfall.lines.map((l) => Math.round(l.allocated));
-    const cols = waterfall.lines.map((l, i) => bucketColor(l.bucketId, i));
-    const sumVals = vals.reduce((s, v) => s + v, 0);
-    const totalLabel = formatMoney(
-      remainingMode ? sumVals : gross,
-      base
-    );
-
-    donutChart.current?.destroy();
-    barChart.current?.destroy();
-
-    const donutCfg: ChartConfiguration<"doughnut"> = {
+    const total = vals.reduce((s, v) => s + v, 0);
+    const center: Plugin<"doughnut"> = {
+      id: "centerTotal",
+      afterDraw(chart) {
+        const { ctx, chartArea } = chart;
+        if (!chartArea) return;
+        const cx = (chartArea.left + chartArea.right) / 2;
+        const cy = (chartArea.top + chartArea.bottom) / 2;
+        ctx.save();
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = t.muted;
+        ctx.font = `600 12px ${t.font}`;
+        ctx.fillText("LEFT IN BUCKETS", cx, cy - 14);
+        ctx.fillStyle = t.text;
+        ctx.font = `700 20px ${t.font}`;
+        ctx.fillText(formatMoney(total, base), cx, cy + 8);
+        ctx.restore();
+      },
+    };
+    const chart = new Chart(ref.current, {
       type: "doughnut",
       data: {
         labels,
         datasets: [
           {
             data: vals,
-            backgroundColor: cols,
-            borderWidth: 2,
-            borderColor: "oklch(0.14 0.01 160)",
+            backgroundColor: waterfall.lines.map((l, i) => bucketColor(l.bucketId, i)),
+            borderWidth: 3,
+            borderColor: t.surface,
             hoverOffset: 4,
           },
         ],
@@ -143,125 +111,170 @@ export function DashboardCharts({
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: "72%",
+        cutout: "74%",
+        animation: prefersReducedMotion() ? false : { duration: 800, easing: "easeOutQuart" },
         plugins: {
           legend: { display: false },
           tooltip: {
-            ...tooltipStyle,
+            ...tooltipStyle(t),
             callbacks: {
-              label: (ctx) => {
-                const raw = Number(ctx.raw) || 0;
-                const denom = remainingMode ? sumVals : gross;
-                const suffix = remainingMode ? " remaining" : "";
-                return `${ctx.label}: ${formatMoney(raw, base)}${suffix} (${
-                  denom > 0 ? ((raw / denom) * 100).toFixed(1) : 0
-                }%)`;
+              label: (c) => {
+                const raw = Number(c.raw) || 0;
+                return `${c.label}: ${formatMoney(raw, base)} left (${total > 0 ? ((raw / total) * 100).toFixed(1) : 0}%)`;
               },
             },
           },
         },
       },
-      plugins: [centerTotalPlugin(totalLabel)],
+      plugins: [center],
+    });
+    return () => chart.destroy();
+  }, [waterfall, base, resolvedTheme]);
+
+  return (
+    <>
+      <div className="chart-wrap">
+        <canvas id="donut-c" ref={ref} role="img" aria-label="What is left in each bucket" />
+      </div>
+      <div className="legend" id="donut-legend">
+        {waterfall.lines.map((l, i) => (
+          <div className="legend-item" key={l.bucketId}>
+            <div className="legend-dot" style={{ background: bucketColor(l.bucketId, i) }} />
+            {l.emoji} {l.name}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/** Income against expenses by month; the lines draw in from the left */
+export function CashflowChart({
+  points,
+  baseCurrency,
+}: {
+  points: MonthPoint[];
+  baseCurrency: string;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const { resolvedTheme } = useTheme();
+  const base = baseCurrency as CurrencyCode;
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const t = readChartTheme();
+    const reduce = prefersReducedMotion();
+    let progress = reduce ? 1 : 0;
+
+    const reveal: Plugin<"line"> = {
+      id: "reveal",
+      beforeDatasetsDraw(chart) {
+        if (progress >= 1) return;
+        const { ctx, chartArea } = chart;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, chartArea.left + (chartArea.right - chartArea.left) * progress + 8, chart.height);
+        ctx.clip();
+      },
+      afterDatasetsDraw(chart) {
+        if (progress < 1) chart.ctx.restore();
+      },
     };
 
-    donutChart.current = new Chart(donutRef.current, donutCfg);
+    const fill = (color: string) => (c: { chart: Chart }) => {
+      const { ctx, chartArea } = c.chart;
+      if (!chartArea) return "transparent";
+      try {
+        const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+        g.addColorStop(0, `color-mix(in oklch, ${color} 35%, transparent)`);
+        g.addColorStop(1, `color-mix(in oklch, ${color} 0%, transparent)`);
+        return g;
+      } catch {
+        return "transparent";
+      }
+    };
 
-    const barColors = ["#4a9eff", ...cols];
-    barChart.current = new Chart(barRef.current, {
-      type: "bar",
+    const chart = new Chart(ref.current, {
+      type: "line",
       data: {
-        labels: ["Gross", ...waterfall.lines.map((l) => l.name)],
+        labels: points.map((p) => p.label),
         datasets: [
           {
-            data: [
-              Math.round(gross),
-              ...waterfall.lines.map((l) => Math.round(l.allocated)),
-            ],
-            backgroundColor: (context) => {
-              const { chart, dataIndex } = context;
-              const { ctx, chartArea } = chart;
-              if (!chartArea) return barColors[dataIndex] || "#888";
-              return makeVerticalGradient(
-                ctx,
-                chartArea,
-                barColors[dataIndex] || "#888"
-              );
-            },
-            borderWidth: 0,
-            borderRadius: 8,
-            borderSkipped: false,
+            label: "Income",
+            data: points.map((p) => Math.round(p.income)),
+            borderColor: t.income,
+            backgroundColor: fill(t.income),
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2.5,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointBackgroundColor: t.income,
+          },
+          {
+            label: "Expenses",
+            data: points.map((p) => Math.round(p.expenses)),
+            borderColor: t.expense,
+            backgroundColor: fill(t.expense),
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointBackgroundColor: t.expense,
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        animation: reduce
+          ? false
+          : {
+              duration: 800,
+              easing: "easeOutQuart",
+              onProgress: (a) => {
+                progress = a.currentStep / (a.numSteps || 1);
+              },
+              onComplete: () => {
+                progress = 1;
+              },
+            },
         plugins: {
           legend: { display: false },
           tooltip: {
-            ...tooltipStyle,
-            callbacks: {
-              label: (ctx) => formatMoney(Number(ctx.raw) || 0, base),
-            },
+            ...tooltipStyle(t),
+            callbacks: { label: (c) => `${c.dataset.label}: ${formatMoney(Number(c.raw) || 0, base)}` },
           },
         },
         scales: {
           x: {
-            ticks: { color: "oklch(0.55 0.02 160)", font: { size: 10 } },
-            grid: { color: "rgba(255,255,255,0.06)", display: false },
+            ticks: { color: t.muted, font: { size: 12, family: t.font } },
+            grid: { display: false },
             border: { display: false },
           },
           y: {
+            beginAtZero: true,
             ticks: {
-              color: "oklch(0.55 0.02 160)",
-              font: { size: 10 },
-              callback: (v) => {
-                const n = Number(v);
-                return (base === "NGN" ? "₦" : "") + Math.round(n / 1000) + "k";
-              },
+              color: t.muted,
+              font: { size: 12, family: t.font },
+              maxTicksLimit: 5,
+              callback: (v) => compact(Number(v), base),
             },
-            grid: { color: "rgba(255,255,255,0.06)" },
+            grid: { color: t.grid },
             border: { display: false },
           },
         },
       },
+      plugins: [reveal],
     });
-
-    return () => {
-      donutChart.current?.destroy();
-      barChart.current?.destroy();
-    };
-  }, [waterfall, base, gross, remainingMode]);
+    return () => chart.destroy();
+  }, [points, base, resolvedTheme]);
 
   return (
-    <div className="two-col">
-      <div className="card">
-        <div className="card-t">
-          {remainingMode
-            ? "Income allocation (remaining)"
-            : "Income allocation"}
-        </div>
-        <div className="chart-wrap">
-          <canvas id="donut-c" ref={donutRef} />
-        </div>
-        <div className="legend" id="donut-legend">
-          {waterfall.lines.map((l, i) => (
-            <div className="legend-item" key={l.bucketId}>
-              <div
-                className="legend-dot"
-                style={{ background: bucketColor(l.bucketId, i) }}
-              />
-              {l.emoji} {l.name}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="card">
-        <div className="card-t">Monthly cash flow</div>
-        <div className="chart-wrap">
-          <canvas id="flow-c" ref={barRef} />
-        </div>
-      </div>
+    <div className="chart-wrap">
+      <canvas id="flow-c" ref={ref} role="img" aria-label="Income and expenses by month" />
     </div>
   );
 }

@@ -23,7 +23,8 @@ import { DashboardCustomize } from "./DashboardCustomize";
 import { AppShell } from "./AppShell";
 import { MetricCard } from "./overview/MetricCard";
 import { CashflowChartCard } from "./overview/CashflowChartCard";
-import { BucketWaterfall } from "./overview/BucketWaterfall";
+import { BucketRings } from "./overview/BucketRings";
+import { HeroBalanceCard } from "./overview/HeroBalanceCard";
 import { BucketDetail } from "./overview/BucketDetail";
 import { ForecastCard } from "./overview/ForecastCard";
 import {
@@ -32,6 +33,8 @@ import {
   type TxListProps,
 } from "./overview/RecentTransactions";
 import { CountUp } from "./motion/CountUp";
+import { Stagger, StaggerItem } from "./motion/Stagger";
+import { ArrowDownLeft, ArrowUpRight, CalendarDays, Scale } from "lucide-react";
 import { SetPasswordPrompt } from "./SetPasswordPrompt";
 import type { TxRow } from "@/lib/tx-row";
 
@@ -181,11 +184,16 @@ export function DashboardClient(props: Props) {
   };
 
   const isTotal = scope === "total";
+  const expenseRowsAll = useMemo(() => [...historyTransactions, ...transactions], [historyTransactions, transactions]);
+  // "Safe to spend" is this month's Spend bucket, whatever the TOTAL / THIS MONTH toggle says
+  const spendState = snapshot.buckets.find((b) => b.bucketId === "spend");
+  const spendTotal = spendState ? spendState.opening + spendState.allocated : 0;
   const expenseRows = scope === "total" ? [...historyTransactions, ...transactions] : transactions;
 
   const metrics = (
     <div className="m-grid">
       <MetricCard
+        icon={Scale}
         label={isTotal ? "Net" : "Net remaining"}
         sub={
           isTotal
@@ -201,16 +209,18 @@ export function DashboardClient(props: Props) {
         <CountUp value={Math.abs(view.net)} currency={base} />
       </MetricCard>
       <MetricCard
+        icon={ArrowUpRight}
+        chipClassName="bg-destructive/12 text-destructive"
         label="Total expenses"
         sub={isTotal ? "all time" : "all buckets combined"}
         valueClassName="text-destructive"
       >
         <CountUp value={view.expenses} currency={base} />
       </MetricCard>
-      <MetricCard label="Income logged" sub={isTotal ? "all time" : "actual this month"}>
+      <MetricCard icon={ArrowDownLeft} label="Income logged" sub={isTotal ? "all time" : "actual this month"}>
         <CountUp value={view.income} currency={base} />
       </MetricCard>
-      <MetricCard label="Days left" sub="in this month">
+      <MetricCard icon={CalendarDays} label="Days left" sub="in this month">
         <span className="font-display tabular-nums">{daysLeft}</span>
       </MetricCard>
     </div>
@@ -233,13 +243,19 @@ export function DashboardClient(props: Props) {
       case "charts":
         return (
           <div key={id}>
-            <CashflowChartCard waterfall={remainingWaterfall} baseCurrency={baseCurrency} />
+            <CashflowChartCard
+              waterfall={remainingWaterfall}
+              rows={expenseRowsAll}
+              baseCurrency={baseCurrency}
+              fx={fx}
+              serverNow={serverNow}
+            />
           </div>
         );
       case "bucket_balances":
         return (
           <div key={id}>
-            <BucketWaterfall plan={plan} states={bucketStates} base={base} income={view.income} scope={scope} />
+            <BucketRings plan={plan} states={bucketStates} base={base} scope={scope} />
           </div>
         );
       case "bucket_detail":
@@ -271,29 +287,49 @@ export function DashboardClient(props: Props) {
         <DashboardCustomize layout={layout} />
       </div>
 
-      <SetPasswordPrompt hasPassword={hasPassword} />
-
-      <div className="mb-3 flex items-center gap-1.5">
-        <button
-          type="button"
-          className={`nav-btn${scope === "total" ? " on" : ""}`}
-          aria-pressed={scope === "total"}
-          onClick={() => setScope("total")}
-        >
-          TOTAL
-        </button>
-        <button
-          type="button"
-          className={`nav-btn${scope === "month" ? " on" : ""}`}
-          aria-pressed={scope === "month"}
-          onClick={() => setScope("month")}
-        >
-          THIS MONTH
-        </button>
-      </div>
-
-      {sections.map((id) => renderSection(id))}
-      <ForecastCard forecast={forecastNext} base={base} />
+      <Stagger id="overview">
+        <StaggerItem>
+          <HeroBalanceCard
+            base={base}
+            spendLeft={spendState ? spendState.closing : null}
+            spendTotal={spendTotal}
+            monthNet={snapshot.net}
+            netTotal={totals.net}
+            daysLeft={daysLeft}
+            hasIncome={snapshot.income > 0 || spendTotal > 0}
+            onLogIncome={() => setModalOpen(true)}
+          />
+        </StaggerItem>
+        <StaggerItem>
+          <SetPasswordPrompt hasPassword={hasPassword} />
+        </StaggerItem>
+        <StaggerItem>
+        <div className="mb-3 flex items-center gap-1.5">
+          <button
+            type="button"
+            className={`nav-btn${scope === "total" ? " on" : ""}`}
+            aria-pressed={scope === "total"}
+            onClick={() => setScope("total")}
+          >
+            TOTAL
+          </button>
+          <button
+            type="button"
+            className={`nav-btn${scope === "month" ? " on" : ""}`}
+            aria-pressed={scope === "month"}
+            onClick={() => setScope("month")}
+          >
+            THIS MONTH
+          </button>
+        </div>
+        </StaggerItem>
+        {sections.map((id) => (
+          <StaggerItem key={id}>{renderSection(id)}</StaggerItem>
+        ))}
+        <StaggerItem>
+          <ForecastCard forecast={forecastNext} base={base} />
+        </StaggerItem>
+      </Stagger>
 
       <LogTransactionModal
         open={modalOpen}
