@@ -1,20 +1,26 @@
-import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Expense or income, as two big buttons */
 export function TypeSwitch({
   type,
   onChange,
+  withTransfer,
 }: {
-  type: "i" | "e";
-  onChange: (t: "i" | "e") => void;
+  type: "i" | "e" | "t";
+  onChange: (t: "i" | "e" | "t") => void;
+  /** Offer Transfer too (needs two accounts) */
+  withTransfer?: boolean;
 }) {
   const opts = [
     { v: "e" as const, label: "Expense", icon: ArrowUpRight, on: "border-destructive bg-destructive/12 text-destructive" },
     { v: "i" as const, label: "Income", icon: ArrowDownLeft, on: "border-primary bg-primary/12 text-primary" },
+    ...(withTransfer
+      ? [{ v: "t" as const, label: "Transfer", icon: ArrowLeftRight, on: "border-bucket-emergency bg-bucket-emergency/12 text-bucket-emergency" }]
+      : []),
   ];
   return (
-    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Type">
+    <div className={cn("grid gap-2", withTransfer ? "grid-cols-3" : "grid-cols-2")} role="group" aria-label="Type">
       {opts.map((o) => (
         <button
           key={o.v}

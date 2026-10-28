@@ -36,6 +36,7 @@ export function useLogForm({
   monthIncome = 0,
   editing = null,
   streak = { current: 0, loggedToday: false },
+  initialType,
 }: LogFormProps) {
   const router = useRouter();
   const base = baseCurrency as CurrencyCode;
@@ -90,7 +91,7 @@ export function useLogForm({
     }
 
     const active = plan ? sortBucketsByPlanOrder(activeBuckets(plan.buckets)) : [];
-    setType("e");
+    setType(initialType === "i" ? "i" : "e");
     setAmount("");
     setCurrency(base || "NGN");
     setSourceId(sources[0]?.id || "");
@@ -100,7 +101,7 @@ export function useLogForm({
     setAccountId("");
     setShortfall(null);
     setDateKey(today);
-  }, [open, editing, base, sources, plan]);
+  }, [open, editing, base, sources, plan, initialType]);
 
   // An account holds one currency, so only those in the chosen currency apply
   const accountChoices = accounts.filter((a) => a.currency === currency);

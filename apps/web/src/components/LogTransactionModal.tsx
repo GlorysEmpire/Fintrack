@@ -4,7 +4,7 @@
  * Log income or an expense, or edit one that is still inside its edit window.
  * The state and rules live in log/useLogForm; this puts the pieces together.
  */
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { EDIT_WINDOW_RULE, editWindowRemainingLabel } from "@fintrack/domain";
 import { formatDay } from "@/lib/format-date";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -16,6 +16,7 @@ import { IncomeFields } from "./log/IncomeFields";
 import { LogSheetShell } from "./log/LogSheetShell";
 import { StreakBadge } from "./log/StreakBadge";
 import { TypeSwitch } from "./log/TypeSwitch";
+import { TransferFields, useTransferForm } from "./log/TransferFields";
 import type { LogFormProps } from "./log/types";
 import { useLogForm } from "./log/useLogForm";
 
@@ -23,12 +24,23 @@ export type { AccountOption } from "./log/types";
 
 export function LogTransactionModal(props: LogFormProps) {
   const f = useLogForm(props);
-  const { open, onClose, plan, sources, accounts = [], bucketRemaining = {}, streak } = props;
+  const { open, onClose, plan, sources, accounts = [], bucketRemaining = {}, streak, initialType } = props;
+  const transferOk = accounts.length >= 2;
+  const [transfer, setTransfer] = useState(false);
+  useEffect(() => {
+    if (open) setTransfer(initialType === "t" && transferOk);
+  }, [open, initialType, transferOk]);
+  const tf = useTransferForm(accounts, plan, onClose);
   if (!open) return null;
 
   const { base, isEdit, type } = f;
   const title = isEdit ? "Edit transaction" : "Log transaction";
-  const saveLabel = f.loading
+  const inTransfer = transfer && !isEdit;
+  const saveLabel = inTransfer
+    ? tf.busy
+      ? "Recording…"
+      : "Record transfer"
+    : f.loading
     ? "Saving…"
     : type === "i" && !isEdit && sources.length === 0
       ? "Add a source first"
@@ -46,8 +58,8 @@ export function LogTransactionModal(props: LogFormProps) {
           <button
             type="button"
             className="h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={f.loading || (type === "i" && !isEdit && sources.length === 0)}
-            onClick={() => f.save()}
+            disabled={inTransfer ? tf.busy || !tf.amount || tf.from === tf.to : f.loading || (type === "i" && !isEdit && sources.length === 0)}
+            onClick={() => (inTransfer ? void tf.save() : f.save())}
           >
             {saveLabel}
           </button>
@@ -65,7 +77,15 @@ export function LogTransactionModal(props: LogFormProps) {
       ) : (
         <div className="flex items-center gap-2">
           <div className="flex-1">
-            <TypeSwitch type={type} onChange={(t) => { f.setType(t); f.setError(null); }} />
+            <TypeSwitch
+              type={inTransfer ? "t" : type}
+              withTransfer={transferOk}
+              onChange={(t) => {
+                setTransfer(t === "t");
+                if (t !== "t") f.setType(t);
+                f.setError(null);
+              }}
+            />
           </div>
           <InfoTip label="About editing" align="end">
             {EDIT_WINDOW_RULE}
@@ -73,6 +93,10 @@ export function LogTransactionModal(props: LogFormProps) {
         </div>
       )}
 
+      {inTransfer ? (
+        <TransferFields f={tf} accounts={accounts} />
+      ) : (
+        <>
       <AmountField amount={f.amount} onAmount={f.setAmount} currency={f.currency} onCurrency={f.setCurrency} hint={f.convHint} />
 
       <label className="mlbl mt-3 block" htmlFor="tx-date">
@@ -180,14 +204,6 @@ export function LogTransactionModal(props: LogFormProps) {
           </select>
         </>
       )}
-      {!isEdit && accounts.length > 1 && (
-        <p className="mt-2 text-xs text-subtle">
-          Moving money between your accounts?{" "}
-          <Link href="/accounts" className="font-medium underline" onClick={onClose}>
-            Make a transfer
-          </Link>
-        </p>
-      )}
 
       <label className="mlbl mt-3 block" htmlFor="tx-note">
         Note {f.cross ? <span className="text-destructive">(required for cross-bucket)</span> : <span className="font-normal normal-case text-subtle">(optional)</span>}
@@ -220,6 +236,8 @@ export function LogTransactionModal(props: LogFormProps) {
           busy={f.loading}
           onRecord={() => f.save({ bucketId: f.fundBucket, reason: f.fundReason.trim() })}
         />
+      )}
+        </>
       )}
     </LogSheetShell>
   );

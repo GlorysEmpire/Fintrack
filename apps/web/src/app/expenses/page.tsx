@@ -8,6 +8,7 @@ import { unreadCount } from "@/lib/inbox";
 import { parseFx } from "@/lib/money";
 import { getUserPlan } from "@/lib/plan";
 import { toTxRow } from "@/lib/tx-row";
+import { listRules } from "@/lib/recurring-rules";
 import { AppShell } from "@/components/AppShell";
 import { ExpensesView } from "@/components/ExpensesView";
 import { PageHeader } from "@/components/PageHeader";
@@ -21,7 +22,7 @@ export default async function ExpensesPage() {
 
   const start = startOfMonth();
 
-  const [plan, txs, inboxUnread, activeAccounts] = await Promise.all([
+  const [plan, txs, inboxUnread, activeAccounts, rules] = await Promise.all([
     getUserPlan(user.id),
     prisma.transaction.findMany({
       where: { userId: user.id, type: "e", date: { gte: start } },
@@ -32,6 +33,7 @@ export default async function ExpensesPage() {
       where: { userId: user.id, status: "active" },
       orderBy: { name: "asc" },
     }),
+    listRules(user.id),
   ]);
 
   return (
@@ -56,6 +58,11 @@ export default async function ExpensesPage() {
         baseCurrency={user.baseCurrency}
         fx={parseFx(user.fxRates)}
         serverNow={new Date().toISOString()}
+        upcoming={rules
+          .filter((r) => r.active && r.type === "e")
+          .sort((a, b) => a.nextDate.localeCompare(b.nextDate))
+          .slice(0, 4)
+          .map((r) => ({ id: r.id, note: r.note, amount: r.amount, currency: r.currency, nextDate: r.nextDate }))}
       />
     </AppShell>
   );

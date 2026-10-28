@@ -6,6 +6,8 @@ import { Inbox } from "lucide-react";
 import { AppShell } from "./AppShell";
 import { EmptyState } from "./EmptyState";
 import { formatTxDate } from "@/lib/format-date";
+import { cn } from "@/lib/utils";
+import { PageHeader } from "./PageHeader";
 
 type Msg = {
   id: string;
@@ -58,27 +60,17 @@ export function InboxClient({
       email={email}
       inboxUnread={inboxUnread}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 12,
-        }}
+      <PageHeader
+        title="Inbox"
+        infoLabel="About the Inbox"
+        info="Accountability from FinTrack Steward, especially when you spend past the plan."
       >
-        <div>
-          <h1 style={{ fontSize: 20, marginBottom: 4 }}>Inbox</h1>
-          <p className="sub" style={{ marginBottom: 0 }}>
-            Accountability from FinTrack Steward — especially when you spend
-            past the plan.
-          </p>
-        </div>
         {messages.some((m) => !m.read) && (
-          <button type="button" className="btn btn-secondary" style={{ width: "auto", padding: "8px 14px" }} onClick={markAll}>
+          <button type="button" className="btn btn-secondary !mt-0 !w-auto px-3.5 py-2" onClick={markAll}>
             Mark all read
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {messages.length === 0 ? (
         <div className="card">
@@ -89,45 +81,22 @@ export function InboxClient({
           />
         </div>
       ) : (
-        messages.map((m) => (
+        messages.map((m, i) => (
           <div
             key={m.id}
-            className="card"
-            style={{
-              borderColor: m.read ? "var(--color-border)" : "var(--color-primary)",
-              opacity: m.read ? 0.85 : 1,
-            }}
+            className={cn("card transition-[border-color,opacity] duration-500", m.read ? "opacity-85" : "border-primary")}
+            style={{ transitionDelay: `${i * 40}ms` }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                marginBottom: 8,
-              }}
-            >
-              <h2 style={{ fontSize: 14 }}>
-                {!m.read && (
-                  <span className="pill pill-g" style={{ marginRight: 8 }}>
-                    new
-                  </span>
-                )}
+            <div className="mb-2 flex justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                {!m.read && <span className="unread-dot h-2.5 w-2.5 shrink-0 rounded-full bg-primary" aria-label="Unread" role="img" />}
                 {m.title}
               </h2>
-              <span className="muted" style={{ whiteSpace: "nowrap" }}>
-                {formatTxDate(m.createdAt)}
-              </span>
+              <span className="whitespace-nowrap text-xs text-muted-foreground">{formatTxDate(m.createdAt)}</span>
             </div>
-            <p style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--color-muted-foreground)", lineHeight: 1.6 }}>
-              {m.body}
-            </p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{m.body}</p>
             {!m.read && (
-              <button
-                type="button"
-                className="btn btn-ghost"
-                style={{ marginTop: 10 }}
-                onClick={() => markRead(m.id)}
-              >
+              <button type="button" className="btn btn-ghost" style={{ marginTop: 10 }} onClick={() => markRead(m.id)}>
                 Mark read
               </button>
             )}

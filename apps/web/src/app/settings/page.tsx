@@ -12,6 +12,8 @@ import { unreadCount } from "@/lib/inbox";
 import { prisma } from "@/lib/db";
 import { listRules } from "@/lib/recurring-rules";
 import { AppShell } from "@/components/AppShell";
+import { PageHeader } from "@/components/PageHeader";
+import { InfoTip } from "@/components/ui/info-tip";
 import { PlanSettings } from "@/components/PlanSettings";
 import { RecurringManager } from "@/components/RecurringManager";
 import { ResetFinTrack } from "@/components/ResetFinTrack";
@@ -39,11 +41,11 @@ export default async function SettingsPage() {
       email={user.email}
       inboxUnread={inboxUnread}
     >
-      <h1 style={{ fontSize: 20, marginBottom: 8 }}>Budget plan</h1>
-      <p className="sub">
-        This is your financial system: your buckets, in your order, with your
-        rules. Everyone&apos;s plan can be different.
-      </p>
+      <PageHeader
+        title="Budget plan"
+        infoLabel="About your plan"
+        info="This is your financial system: your buckets, in your order, with your rules. Everyone's plan can be different."
+      />
 
       <div className="card">
         <h2>Account</h2>
@@ -106,8 +108,9 @@ export default async function SettingsPage() {
             Accounts (CSV)
           </a>
         </p>
-        <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
-          Your password and sign-in details are never included.
+        <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+          What is not included
+          <InfoTip label="About what is not included">Your password and sign-in details are never included.</InfoTip>
         </p>
       </div>
 

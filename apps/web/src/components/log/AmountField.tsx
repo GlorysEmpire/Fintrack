@@ -25,12 +25,17 @@ export function AmountField({
   currency,
   onCurrency,
   hint,
+  fixedCurrency,
+  label = "Amount",
 }: {
   amount: string;
   onAmount: (v: string) => void;
   currency: CurrencyCode;
   onCurrency: (c: CurrencyCode) => void;
   hint: string;
+  /** Show this currency as fixed text instead of a choice (a transfer is in the sending account's currency) */
+  fixedCurrency?: string;
+  label?: string;
 }) {
   const phone = useIsPhone();
 
@@ -42,7 +47,7 @@ export function AmountField({
   return (
     <div>
       <label className="mlbl mt-4 block" htmlFor="tx-amount">
-        Amount
+        {label}
       </label>
       <div className="flex items-center gap-2">
         <input
@@ -57,6 +62,9 @@ export function AmountField({
           autoFocus
           className="min-w-0 flex-1 rounded-xl border border-border bg-muted px-4 py-3 font-display text-4xl font-bold tabular-nums outline-none focus:border-primary"
         />
+        {fixedCurrency ? (
+          <span className="flex h-[3.25rem] items-center rounded-xl border border-border bg-muted px-3 text-sm text-muted-foreground">{fixedCurrency}</span>
+        ) : (
         <select
           aria-label="Currency"
           value={currency}
@@ -69,6 +77,7 @@ export function AmountField({
             </option>
           ))}
         </select>
+        )}
       </div>
       <div className="mt-1 min-h-4 text-xs text-subtle">{hint}</div>
 

@@ -35,4 +35,6 @@ export type LogFormProps = {
   editing?: TxRow | null;
   /** Days in a row something was recorded, before this one */
   streak?: LoggingStreak;
+  /** What the sheet opens on; expense when omitted */
+  initialType?: "i" | "e" | "t";
 };

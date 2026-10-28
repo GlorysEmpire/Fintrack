@@ -74,7 +74,7 @@ export function HeroBalanceCard({
             {!hasIncome && (
               <button
                 type="button"
-                onClick={openLog}
+                onClick={() => openLog({ type: "i" })}
                 className="mt-3 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
                 Log income

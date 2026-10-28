@@ -38,6 +38,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Test runs build into their own folder so they never disturb a dev server using .next
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   transpilePackages: ["@fintrack/domain"],
   // monorepo: allow importing from packages
   outputFileTracingRoot: path.join(__dirname, "../../"),

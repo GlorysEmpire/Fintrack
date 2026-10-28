@@ -183,7 +183,65 @@ test("the phone keypad types an amount, and an expense over the bucket offers on
   expect(saved.transactions.filter((t: { type: string }) => t.type === "expense")).toHaveLength(0);
 });
 
-for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard", "/expenses"]) {
+test("the command palette finds pages and starts a task from the keyboard", async ({ page }) => {
+  await signedInUser(page);
+  const box = () => page.getByRole("combobox", { name: "Search pages and actions" });
+  // Pressed until it answers: the first press can land before the page's scripts are listening
+  const openWith = async (key: string) =>
+    expect(async () => {
+      await page.keyboard.press(key);
+      await expect(box()).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+
+  await page.goto("/trends");
+  await openWith("Control+k");
+  await box().fill("accou");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
+  await openWith("/");
+  await box().fill("log income");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Log transaction" })).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Income" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a transfer can be made from the log sheet on any page", async ({ page }) => {
+  await signedInUser(page);
+  for (const [name, opening] of [["GTBank", 50000], ["Cash", 0]] as const) {
+    const res = await page.request.post("/api/accounts", { data: { name, type: "bank", openingBalance: opening, openingDate: "2026-01-01", currency: "NGN", institution: null } });
+    expect(res.ok()).toBeTruthy();
+  }
+  await page.goto("/trends");
+  await page.getByRole("button", { name: "Log transaction" }).first().click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Transfer" }).click();
+  await dialog.getByLabel("From account").selectOption({ label: "GTBank (NGN)" });
+  await dialog.getByLabel("To account").selectOption({ label: "Cash (NGN)" });
+  await dialog.getByLabel("Amount sent").fill("12000");
+  await dialog.getByRole("button", { name: "Record transfer" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/trends$/);
+  await page.goto("/accounts");
+  await expect(page.getByText("₦38,000.00").first()).toBeVisible();
+  await expect(page.getByText("₦12,000.00").first()).toBeVisible();
+});
+
+test("the Advisor works with no online AI: notes, a guided answer and a delete that asks first", async ({ page }) => {
+  await signedInUser(page);
+  await page.goto("/advisor");
+  await expect(page.getByText("Guided coach")).toBeVisible();
+  await page.getByLabel("Message to Steward").fill("Am I on track this month?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByText("Am I on track this month?").first()).toBeVisible();
+  await expect(page.getByRole("status", { name: "Steward is typing" })).toBeHidden({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Delete this conversation" }).click();
+  await expect(page.getByRole("dialog", { name: "Delete this conversation?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("Am I on track this month?").first()).toBeVisible();
+});
+
+for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard", "/expenses", "/advisor", "/inbox", "/income"]) {
   test(`${path} fits a phone and its controls have names`, async ({ page }) => {
     await signedInUser(page);
     await page.setViewportSize({ width: 375, height: 812 });

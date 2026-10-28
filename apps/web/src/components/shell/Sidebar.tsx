@@ -70,7 +70,7 @@ export function Sidebar({
         <span className="font-display text-lg font-semibold tracking-tight">FinTrack</span>
       </div>
 
-      <button type="button" className={logClass} onClick={openLog} disabled={busy} data-testid="log-sidebar">
+      <button type="button" className={logClass} onClick={() => openLog()} disabled={busy} data-testid="log-sidebar">
         <Plus className="h-4 w-4" aria-hidden /> Log transaction
       </button>
 

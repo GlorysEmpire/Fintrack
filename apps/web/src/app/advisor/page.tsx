@@ -6,6 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { hasXaiKey } from "@/lib/ai";
 import { unreadCount } from "@/lib/inbox";
 import { prisma } from "@/lib/db";
+import { getStewardView } from "@/lib/steward";
 import { AdvisorClient } from "@/components/AdvisorClient";
 
 export default async function AdvisorPage() {
@@ -13,13 +14,14 @@ export default async function AdvisorPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [messages, inboxUnread] = await Promise.all([
+  const [messages, inboxUnread, steward] = await Promise.all([
     prisma.aiMessage.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "asc" },
       take: 40,
     }),
     unreadCount(user.id),
+    getStewardView(user),
   ]);
 
   return (
@@ -28,6 +30,14 @@ export default async function AdvisorPage() {
       email={user.email}
       inboxUnread={inboxUnread}
       liveAi={hasXaiKey()}
+      notes={steward.insights.slice(0, 4).map((i) => ({
+        id: i.id,
+        severity: i.severity,
+        title: i.title,
+        detail: i.detail,
+        evidence: i.evidence,
+        next: i.next,
+      }))}
       initialMessages={messages.map((m) => ({
         id: m.id,
         role: m.role,

@@ -49,7 +49,7 @@ export function MobileTabBar({ path }: { path: string }) {
     >
       {tabs.slice(0, 2)}
       <div className="flex justify-center">
-        <button type="button" className={cn(fabClass, "-mt-5")} onClick={openLog} disabled={busy} aria-label="Log transaction" data-testid="fab">
+        <button type="button" className={cn(fabClass, "-mt-5")} onClick={() => openLog()} disabled={busy} aria-label="Log transaction" data-testid="fab">
           {fabIcon}
         </button>
       </div>

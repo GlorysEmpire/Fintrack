@@ -25,3 +25,4 @@ playwright-report/
 docs/
 OWNER-NEXT-STEPS.md
 LAUNCH-READINESS.md
+.next-test/

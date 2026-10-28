@@ -30,7 +30,7 @@ export function RecentTransactions({
             title="No transactions yet"
             description="Log income or an expense to start tracking this month."
             actionLabel="Log transaction"
-            onAction={openLog}
+            onAction={() => openLog()}
           />
         ) : (
           <TransactionList rows={shown} {...listProps} />

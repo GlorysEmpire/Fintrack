@@ -12,7 +12,7 @@ import { LogTransactionModal } from "../LogTransactionModal";
 
 type Api = {
   /** Fetch what the sheet needs, then open it */
-  open: () => void;
+  open: (opts?: { type?: "i" | "e" | "t" }) => void;
   /** True while that fetch is running */
   busy: boolean;
 };
@@ -29,14 +29,16 @@ export function LogSheetProvider({ children }: { children: React.ReactNode }) {
   const [ctx, setCtx] = useState<LogContext | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [initialType, setInitialType] = useState<"i" | "e" | "t">("e");
 
-  const open = useCallback(async () => {
+  const open = useCallback(async (opts?: { type?: "i" | "e" | "t" }) => {
     setBusy(true);
     try {
       const res = await fetch("/api/log-context", { cache: "no-store" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Could not load");
       setCtx(data.context as LogContext);
+      setInitialType(opts?.type ?? "e");
       setIsOpen(true);
     } catch {
       toast("Could not open the log sheet. Check your connection and try again.");
@@ -62,6 +64,7 @@ export function LogSheetProvider({ children }: { children: React.ReactNode }) {
           bucketRemaining={ctx.bucketRemaining}
           monthIncome={ctx.monthIncome}
           streak={ctx.streak}
+          initialType={initialType}
         />
       )}
     </Ctx.Provider>

@@ -161,7 +161,7 @@ export function IncomeSourcesManager({
     <>
       <div className="mb-2 mt-4 flex items-center justify-between">
         <div className="sec !m-0">Income sources</div>
-        <button type="button" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90" onClick={openLog}>
+        <button type="button" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90" onClick={() => openLog({ type: "i" })}>
           <Plus className="h-4 w-4" aria-hidden /> Log income
         </button>
       </div>
