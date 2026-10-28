@@ -100,9 +100,9 @@ export function AdvisorClient({
         Specialist coach bound to <strong>your</strong> plan — not a generic web
         AI.
         {liveAi ? (
-          <span style={{ color: "var(--g)" }}> · Live AI connected</span>
+          <span style={{ color: "var(--color-primary)" }}> · Live AI connected</span>
         ) : (
-          <span style={{ color: "var(--y)" }}>
+          <span style={{ color: "var(--color-warning)" }}>
             {" "}
             · Offline coach (set XAI_API_KEY for full Steward)
           </span>

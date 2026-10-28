@@ -79,7 +79,7 @@ export default async function IncomePage() {
       <div className="metric-grid">
         <div className="metric">
           <div className="lbl">Logged this month</div>
-          <div className="val" style={{ color: "var(--g)" }}>
+          <div className="val" style={{ color: "var(--color-primary)" }}>
             {formatMoney(total, base)}
           </div>
         </div>

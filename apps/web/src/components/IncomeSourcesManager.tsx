@@ -147,7 +147,7 @@ export function IncomeSourcesManager({
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "var(--g)", fontWeight: 700 }}>
+              <div style={{ color: "var(--color-primary)", fontWeight: 700 }}>
                 {formatMoney(s.loggedBase, base)}
               </div>
               <div className="muted" style={{ fontWeight: 400, fontSize: 12 }}>

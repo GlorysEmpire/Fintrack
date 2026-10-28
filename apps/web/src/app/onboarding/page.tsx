@@ -279,9 +279,9 @@ export default function OnboardingPage() {
               <span
                 className="tag"
                 style={{
-                  color: "var(--y)",
+                  color: "var(--color-warning)",
                   background:
-                    "color-mix(in oklch, var(--y) 12%, transparent)",
+                    "color-mix(in oklch, var(--color-warning) 12%, transparent)",
                 }}
               >
                 Optional skip
@@ -358,11 +358,11 @@ export default function OnboardingPage() {
             <h1>Here&apos;s your split preview</h1>
             <p className="sub">
               Demo only: how{" "}
-              <strong style={{ color: "var(--tx)" }}>
+              <strong style={{ color: "var(--color-foreground)" }}>
                 {formatMoney(DEMO_GROSS, DEMO_CURRENCY)}
               </strong>{" "}
               of income would flow through{" "}
-              <strong style={{ color: "var(--tx)" }}>{demoLines.name}</strong>.
+              <strong style={{ color: "var(--color-foreground)" }}>{demoLines.name}</strong>.
               Your real dashboard starts at zero until you log income.
             </p>
 
@@ -399,7 +399,7 @@ export default function OnboardingPage() {
             <div
               style={{
                 height: 4,
-                background: "var(--bg3)",
+                background: "var(--color-muted)",
                 borderRadius: 2,
                 overflow: "hidden",
                 marginBottom: 8,
@@ -412,7 +412,7 @@ export default function OnboardingPage() {
                   width: `${((DEMO_AUTO_MS / 1000 - secondsLeft) /
                     (DEMO_AUTO_MS / 1000)) *
                     100}%`,
-                  background: "var(--g)",
+                  background: "var(--color-primary)",
                   transition: "width 0.25s linear",
                 }}
               />
@@ -476,10 +476,10 @@ export default function OnboardingPage() {
                         margin: 0,
                         textAlign: "left",
                         borderColor: on
-                          ? "color-mix(in oklch, var(--g) 50%, transparent)"
+                          ? "color-mix(in oklch, var(--color-primary) 50%, transparent)"
                           : undefined,
                         background: on
-                          ? "color-mix(in oklch, var(--g) 10%, transparent)"
+                          ? "color-mix(in oklch, var(--color-primary) 10%, transparent)"
                           : undefined,
                       }}
                     >

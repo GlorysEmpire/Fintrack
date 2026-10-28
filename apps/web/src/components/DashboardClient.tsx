@@ -204,7 +204,7 @@ export function DashboardClient(props: Props) {
             </div>
             <div
               className="m-val"
-              style={{ color: view.net >= 0 ? "var(--g)" : "var(--r)" }}
+              style={{ color: view.net >= 0 ? "var(--color-primary)" : "var(--color-destructive)" }}
             >
               <Money amount={netAnim} currency={base} />
             </div>
@@ -220,7 +220,7 @@ export function DashboardClient(props: Props) {
           </div>
           <div className="metric">
             <div className="m-lbl">Total expenses</div>
-            <div className="m-val" style={{ color: "var(--r)" }}>
+            <div className="m-val" style={{ color: "var(--color-destructive)" }}>
               <Money amount={expenseAnim} currency={base} />
             </div>
             <div className="m-sub">
@@ -279,13 +279,13 @@ export function DashboardClient(props: Props) {
         <div className="two-col">
           <div className="card">
             <div className="card-t">📊 Income allocation (remaining)</div>
-            <p style={{ fontSize: 12, color: "var(--tx3)" }}>
+            <p style={{ fontSize: 12, color: "var(--color-subtle)" }}>
               Log income to fund buckets. Remaining starts at 0.
             </p>
           </div>
           <div className="card">
             <div className="card-t">📈 Monthly cash flow</div>
-            <p style={{ fontSize: 12, color: "var(--tx3)" }}>
+            <p style={{ fontSize: 12, color: "var(--color-subtle)" }}>
               Log income to populate charts.
             </p>
           </div>
@@ -311,13 +311,13 @@ export function DashboardClient(props: Props) {
         <div className="card">
           <div className="card-t">
             💧 Bucket balances{" "}
-            <span style={{ fontSize: 10, fontWeight: 400, color: "var(--tx3)" }}>
+            <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-subtle)" }}>
               {scope === "total"
                 ? "— all-time allocated vs spent"
                 : "— allocated vs remaining after expenses"}
             </span>
           </div>
-          <p style={{ fontSize: 12, color: "var(--tx3)" }}>
+          <p style={{ fontSize: 12, color: "var(--color-subtle)" }}>
             <Link href="/settings">Set a plan</Link> to track buckets.
           </p>
         </div>
@@ -346,7 +346,7 @@ export function DashboardClient(props: Props) {
       const over = left < 0;
       const p = alloc > 0 ? Math.min(100, (spent / alloc) * 100) : 0;
       const wfc = bucketColor(meta.id, i);
-      const col = over ? "var(--r)" : p > 85 ? "var(--y)" : wfc;
+      const col = over ? "var(--color-destructive)" : p > 85 ? "var(--color-warning)" : wfc;
       return {
         id: meta.id,
         emoji: meta.emoji || "",
@@ -368,7 +368,7 @@ export function DashboardClient(props: Props) {
       <div className="card">
         <div className="card-t">
           💧 Bucket balances{" "}
-          <span style={{ fontSize: 10, fontWeight: 400, color: "var(--tx3)" }}>
+          <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-subtle)" }}>
             {scope === "total"
               ? "— all-time allocated vs spent"
               : "— allocated vs remaining after expenses"}
@@ -397,7 +397,7 @@ export function DashboardClient(props: Props) {
                     <div
                       style={{
                         height: 4,
-                        background: "var(--bg3)",
+                        background: "var(--color-muted)",
                         borderRadius: 2,
                         overflow: "hidden",
                       }}
@@ -419,8 +419,8 @@ export function DashboardClient(props: Props) {
                       {r.over && (
                         <span
                           style={{
-                            fontSize: 9,
-                            color: "var(--r)",
+                            fontSize: 12,
+                            color: "var(--color-destructive)",
                             fontWeight: 700,
                           }}
                         >
@@ -469,15 +469,15 @@ export function DashboardClient(props: Props) {
                   ? 100
                   : 0;
             const barColor = over
-              ? "var(--r)"
+              ? "var(--color-destructive)"
               : pctUsed > 85
-                ? "var(--y)"
-                : "var(--g)";
+                ? "var(--color-warning)"
+                : "var(--color-primary)";
             const remColor = over
-              ? "var(--r)"
+              ? "var(--color-destructive)"
               : remaining < alloc * 0.2
-                ? "var(--y)"
-                : "var(--tx)";
+                ? "var(--color-warning)"
+                : "var(--color-foreground)";
             const wfc = bucketColor(b.bucketId, i);
 
             // Expenses for this bucket — this month's txs, or all txs for TOTAL
@@ -505,9 +505,9 @@ export function DashboardClient(props: Props) {
                     {over && (
                       <span
                         style={{
-                          fontSize: 9,
+                          fontSize: 12,
                           fontWeight: 700,
-                          color: "var(--r)",
+                          color: "var(--color-destructive)",
                           marginLeft: 4,
                         }}
                       >
@@ -522,7 +522,7 @@ export function DashboardClient(props: Props) {
                     style={{ width: `${pctUsed}%`, background: barColor }}
                   />
                 </div>
-                <div style={{ fontSize: 10, color: "var(--tx3)", marginTop: 3 }}>
+                <div style={{ fontSize: 12, color: "var(--color-subtle)", marginTop: 3 }}>
                   Spent: {formatMoney(spent, base)} of {formatMoney(alloc, base)}
                 </div>
                 {spentTxs.length > 0 && (
@@ -585,7 +585,7 @@ export function DashboardClient(props: Props) {
       <>
         <div className="sec">History (past months)</div>
         <div className="card">
-          <p style={{ fontSize: 12, color: "var(--tx3)", marginBottom: 10 }}>
+          <p style={{ fontSize: 12, color: "var(--color-subtle)", marginBottom: 10 }}>
             These logs are kept. A transaction you file under an earlier month
             appears here.
           </p>
@@ -601,7 +601,7 @@ export function DashboardClient(props: Props) {
         if (!(onboarding === "skipped" && !plan)) return null;
         return (
           <div className="card" key={id}>
-            <p style={{ fontSize: 12, color: "var(--tx2)" }}>
+            <p style={{ fontSize: 12, color: "var(--color-muted-foreground)" }}>
               Plan not set —{" "}
               <Link href="/settings">build your plan in Plan settings</Link>.
             </p>

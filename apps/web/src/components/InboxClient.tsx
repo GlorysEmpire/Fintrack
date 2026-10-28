@@ -94,7 +94,7 @@ export function InboxClient({
             key={m.id}
             className="card"
             style={{
-              borderColor: m.read ? "var(--bd)" : "var(--g)",
+              borderColor: m.read ? "var(--color-border)" : "var(--color-primary)",
               opacity: m.read ? 0.85 : 1,
             }}
           >
@@ -118,7 +118,7 @@ export function InboxClient({
                 {formatTxDate(m.createdAt)}
               </span>
             </div>
-            <p style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--tx2)", lineHeight: 1.6 }}>
+            <p style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--color-muted-foreground)", lineHeight: 1.6 }}>
               {m.body}
             </p>
             {!m.read && (

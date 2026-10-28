@@ -45,9 +45,9 @@ export function SetPasswordPrompt({ hasPassword }: { hasPassword: boolean }) {
       className="card"
       style={{
         marginBottom: 16,
-        borderColor: "color-mix(in oklch, var(--g) 35%, transparent)",
+        borderColor: "color-mix(in oklch, var(--color-primary) 35%, transparent)",
         background:
-          "color-mix(in oklch, var(--g) 8%, var(--bg2, transparent))",
+          "color-mix(in oklch, var(--color-primary) 8%, var(--color-card, transparent))",
       }}
       role="status"
     >

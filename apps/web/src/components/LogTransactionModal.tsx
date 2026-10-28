@@ -504,7 +504,7 @@ export function LogTransactionModal({
                           <div className="ms-lbl">
                             {l.emoji} {l.name}
                           </div>
-                          <div className="ms-val" style={{ color: "var(--g)" }}>
+                          <div className="ms-val" style={{ color: "var(--color-primary)" }}>
                             +{formatMoney(l.added, base)}
                           </div>
                         </div>
@@ -597,12 +597,12 @@ export function LogTransactionModal({
                       fontSize: 12,
                       lineHeight: 1.55,
                       background:
-                        cross || blockedHere ? "var(--rdim)" : "var(--gdim)",
+                        cross || blockedHere ? "var(--color-destructive-soft)" : "var(--color-primary-soft)",
                       border:
                         cross || blockedHere
-                          ? "1px solid color-mix(in oklch, var(--r) 40%, transparent)"
-                          : "1px solid var(--g)",
-                      color: cross || blockedHere ? "var(--r)" : "var(--g)",
+                          ? "1px solid color-mix(in oklch, var(--color-destructive) 40%, transparent)"
+                          : "1px solid var(--color-primary)",
+                      color: cross || blockedHere ? "var(--color-destructive)" : "var(--color-primary)",
                     }}
                   >
                     {cross ? (
@@ -680,7 +680,7 @@ export function LogTransactionModal({
               Note{" "}
               <span
                 className="mlbl-hint"
-                style={cross ? { color: "var(--r)" } : undefined}
+                style={cross ? { color: "var(--color-destructive)" } : undefined}
               >
                 {cross ? "(required for cross-bucket)" : "(optional)"}
               </span>
