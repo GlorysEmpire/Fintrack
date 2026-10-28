@@ -9,7 +9,8 @@ import { parseFx } from "@/lib/money";
 import { getUserPlan } from "@/lib/plan";
 import { toTxRow } from "@/lib/tx-row";
 import { AppShell } from "@/components/AppShell";
-import { TransactionList } from "@/components/TransactionList";
+import { ExpensesView } from "@/components/ExpensesView";
+import { PageHeader } from "@/components/PageHeader";
 import { EDIT_WINDOW_RULE, startOfMonth } from "@fintrack/domain";
 import Link from "next/link";
 
@@ -39,35 +40,23 @@ export default async function ExpensesPage() {
       email={user.email}
       inboxUnread={inboxUnread}
     >
-      <h1 style={{ fontSize: 20, marginBottom: 8 }}>Expenses this month</h1>
-      <p className="sub">
-        Cross-bucket spends are tagged. Steward messages land in{" "}
-        <Link href="/inbox">Inbox</Link>. {EDIT_WINDOW_RULE}
-      </p>
-
-      <div className="card">
-        {txs.length === 0 ? (
-          <div className="empty">
-            No expenses yet.{" "}
-            <Link href="/dashboard">Log one from Overview →</Link>
-          </div>
-        ) : (
-          <TransactionList
-            rows={txs.map(toTxRow)}
-            plan={plan}
-            sources={[]}
-            accounts={activeAccounts.map((a) => ({
-              id: a.id,
-              name: a.name,
-              currency: a.currency,
-              kind: a.kind,
-            }))}
-            baseCurrency={user.baseCurrency}
-            fx={parseFx(user.fxRates)}
-            serverNow={new Date().toISOString()}
-          />
-        )}
-      </div>
+      <PageHeader
+        title="Expenses this month"
+        infoLabel="About expenses"
+        info={
+          <>
+            Cross-bucket spends are tagged. Steward messages land in <Link href="/inbox">Inbox</Link>. {EDIT_WINDOW_RULE}
+          </>
+        }
+      />
+      <ExpensesView
+        rows={txs.map(toTxRow)}
+        plan={plan}
+        accounts={activeAccounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency, kind: a.kind }))}
+        baseCurrency={user.baseCurrency}
+        fx={parseFx(user.fxRates)}
+        serverNow={new Date().toISOString()}
+      />
     </AppShell>
   );
 }

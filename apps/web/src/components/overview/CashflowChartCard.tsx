@@ -29,12 +29,6 @@ export function CashflowChartCard({
   fx: Record<string, number>;
   serverNow: string;
 }) {
-  const [months, setMonths] = useState<number>(6);
-  const points = useMemo(
-    () => monthlySeries(rows, baseCurrency as CurrencyCode, fx, months, new Date(serverNow)),
-    [rows, baseCurrency, fx, months, serverNow]
-  );
-  const hasFlow = rows.some((t) => t.type === "i" || t.type === "e");
   const hasAllocation = Boolean(waterfall && waterfall.gross > 0);
 
   return (
@@ -47,6 +41,30 @@ export function CashflowChartCard({
           <p className="text-xs text-subtle">Log income to fund buckets. Remaining starts at 0.</p>
         )}
       </div>
+      <CashflowLinesCard rows={rows} baseCurrency={baseCurrency} fx={fx} serverNow={serverNow} />
+    </div>
+  );
+}
+
+/** Income against expenses by month, with a 3M / 6M / 1Y range */
+export function CashflowLinesCard({
+  rows,
+  baseCurrency,
+  fx,
+  serverNow,
+}: {
+  rows: SeriesTx[];
+  baseCurrency: string;
+  fx: Record<string, number>;
+  serverNow: string;
+}) {
+  const [months, setMonths] = useState<number>(6);
+  const points = useMemo(
+    () => monthlySeries(rows, baseCurrency as CurrencyCode, fx, months, new Date(serverNow)),
+    [rows, baseCurrency, fx, months, serverNow]
+  );
+  const hasFlow = rows.some((t) => t.type === "i" || t.type === "e");
+  return (
       <div className="card">
         <div className="mb-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-card-title font-semibold">
@@ -88,6 +106,5 @@ export function CashflowChartCard({
           <p className="text-xs text-subtle">Log income to populate charts.</p>
         )}
       </div>
-    </div>
   );
 }

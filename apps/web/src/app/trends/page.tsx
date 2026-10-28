@@ -11,7 +11,12 @@ import { listDeviations } from "@/lib/reallocations";
 import { getUserPlan } from "@/lib/plan";
 import { formatExact } from "@/lib/money-format";
 import { unreadCount } from "@/lib/inbox";
+import { prisma } from "@/lib/db";
+import { parseFx } from "@/lib/money";
 import { AppShell } from "@/components/AppShell";
+import { PageHeader } from "@/components/PageHeader";
+import { InfoTip } from "@/components/ui/info-tip";
+import { CashflowLinesCard } from "@/components/overview/CashflowChartCard";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -34,11 +39,15 @@ export default async function TrendsPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [steward, inboxUnread, deviations, plan] = await Promise.all([
+  const [steward, inboxUnread, deviations, plan, flowRows] = await Promise.all([
     getStewardView(user),
     unreadCount(user.id),
     listDeviations(user.id, 50),
     getUserPlan(user.id),
+    prisma.transaction.findMany({
+      where: { userId: user.id },
+      select: { type: true, amount: true, currency: true, date: true },
+    }),
   ]);
   const bucketName = (id: string) => plan?.buckets.find((b) => b.id === id)?.name ?? id;
   const view = steward.performance;
@@ -51,12 +60,17 @@ export default async function TrendsPage() {
 
   return (
     <AppShell baseCurrency={user.baseCurrency} email={user.email} inboxUnread={inboxUnread}>
-      <h1 style={{ fontSize: 20, marginBottom: 8 }}>Trends</h1>
-      <p className="sub">
-        Are you spending more or less of what you earn, and following your plan
-        more consistently? These are plain calculations from what you have
-        recorded, not estimates.
-      </p>
+      <PageHeader
+        title="Trends"
+        infoLabel="About trends"
+        info="Are you spending more or less of what you earn, and following your plan more consistently? These are plain calculations from what you have recorded, not estimates."
+      />
+      <CashflowLinesCard
+        rows={flowRows.map((t) => ({ type: t.type, amount: t.amount, currency: t.currency, date: t.date.toISOString() }))}
+        baseCurrency={user.baseCurrency}
+        fx={parseFx(user.fxRates)}
+        serverNow={new Date().toISOString()}
+      />
 
       {view.months.length === 0 ? (
         <div className="card">
@@ -101,8 +115,10 @@ export default async function TrendsPage() {
           </div>
 
           <div className="card">
-            <div className="card-t">This month so far, compared fairly</div>
-            <p className="muted" style={{ marginTop: 4 }}>{c.note}</p>
+            <div className="card-t">
+              This month so far, compared fairly
+              <InfoTip label="About this comparison">{c.note}</InfoTip>
+            </div>
             <div style={{ overflowX: "auto", marginTop: 8 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <caption className="muted" style={{ textAlign: "left", fontSize: 12 }}>
@@ -270,15 +286,14 @@ export default async function TrendsPage() {
                 ))}
               </tbody>
             </table>
-            <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-              &ldquo;Moved to savings&rdquo; counts transfers into your savings and investment accounts. Setting
-              money aside is not spending, and it does not by itself show that the account grew.
-            </p>
-            {anyConverted && (
-              <p className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-                Some months include other currencies, converted at your saved exchange rates.
-              </p>
-            )}
+            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+              About these columns
+              <InfoTip label="About moved to savings and currencies">
+                &ldquo;Moved to savings&rdquo; counts transfers into your savings and investment accounts. Setting
+                money aside is not spending, and it does not by itself show that the account grew.
+                {anyConverted && " Some months include other currencies, converted at your saved exchange rates."}
+              </InfoTip>
+            </div>
           </div>
 
           {view.accountMovement.length > 0 && (

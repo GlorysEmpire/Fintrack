@@ -8,7 +8,9 @@ import { listAccounts } from "@/lib/accounts";
 import { listTransfers } from "@/lib/transfers";
 import { unreadCount } from "@/lib/inbox";
 import { getUserPlan } from "@/lib/plan";
+import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { PageHeader } from "@/components/PageHeader";
 import { AccountsManager } from "@/components/AccountsManager";
 
 export default async function AccountsPage() {
@@ -29,16 +31,15 @@ export default async function AccountsPage() {
       email={user.email}
       inboxUnread={inboxUnread}
     >
-      <h1 style={{ fontSize: 20, marginBottom: 8 }}>Accounts</h1>
-      <p className="sub">
-        Where your money is held, and where debts sit. An account answers
-        &ldquo;where is the money?&rdquo;; your plan&apos;s buckets answer
-        &ldquo;what is it for?&rdquo;. Moving money between your own accounts is
-        a transfer: it is never income and never spending.
-      </p>
-      <p style={{ marginBottom: 12 }}>
-        <a href="/imports">Bank imports (read-only) →</a>
-      </p>
+      <PageHeader
+        title="Accounts"
+        infoLabel="About accounts"
+        info="Where your money is held, and where debts sit. An account answers “where is the money?”; your plan's buckets answer “what is it for?”. Moving money between your own accounts is a transfer: it is never income and never spending."
+      >
+        <Link href="/imports" className="text-sm font-medium">
+          Bank imports (read-only) →
+        </Link>
+      </PageHeader>
       <AccountsManager
         accounts={accounts}
         transfers={transfers}

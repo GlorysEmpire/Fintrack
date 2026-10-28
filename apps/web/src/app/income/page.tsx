@@ -16,7 +16,9 @@ import { unreadCount } from "@/lib/inbox";
 import { parseFx } from "@/lib/money";
 import { AppShell } from "@/components/AppShell";
 import { IncomeSourcesManager } from "@/components/IncomeSourcesManager";
-import Link from "next/link";
+import { PageHeader } from "@/components/PageHeader";
+import { MetricCard } from "@/components/overview/MetricCard";
+import { ListChecks, Wallet } from "lucide-react";
 
 export default async function IncomePage() {
   const user = await getSessionUser();
@@ -76,30 +78,24 @@ export default async function IncomePage() {
       email={user.email}
       inboxUnread={inboxUnread}
     >
-      <div className="metric-grid">
-        <div className="metric">
-          <div className="lbl">Logged this month</div>
-          <div className="val" style={{ color: "var(--color-primary)" }}>
-            {formatMoney(total, base)}
-          </div>
-        </div>
-        <div className="metric">
-          <div className="lbl">Sources</div>
-          <div className="val" style={{ fontSize: 18 }}>
-            {sources.length}
-          </div>
-        </div>
+      <PageHeader
+        title="Income"
+        infoLabel="About income sources"
+        info="Income sources label where money came from when you log income. An empty list is fine: we never invent sources for you."
+      />
+      <div className="m-grid">
+        <MetricCard icon={Wallet} label="Logged this month" sub="all sources" valueClassName="text-primary">
+          {formatMoney(total, base)}
+        </MetricCard>
+        <MetricCard icon={ListChecks} label="Sources" sub={`${sourcesWithLogged.filter((s) => s.loggedBase > 0).length} logged this month`}>
+          {sources.length}
+        </MetricCard>
       </div>
 
       <IncomeSourcesManager
         sources={sourcesWithLogged}
         baseCurrency={user.baseCurrency}
       />
-
-      <p className="muted" style={{ marginTop: 16 }}>
-        Log income from Overview with the + button.{" "}
-        <Link href="/dashboard">Go to Overview →</Link>
-      </p>
     </AppShell>
   );
 }

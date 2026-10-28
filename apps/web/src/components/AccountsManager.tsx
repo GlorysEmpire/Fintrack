@@ -11,6 +11,8 @@ import { ACCOUNT_TYPES, kindOfType, type CurrencyCode } from "@fintrack/domain";
 import { formatExact as money } from "@/lib/money-format";
 import { toDateInputValue } from "@/lib/format-date";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { InfoTip } from "@/components/ui/info-tip";
+import { AccountTile } from "./accounts/AccountTile";
 import type { AccountEvent, AccountView } from "@/lib/accounts";
 import type { TransferView } from "@/lib/transfers";
 
@@ -64,6 +66,7 @@ export function AccountsManager({
   const [tNote, setTNote] = useState("");
   const [tRef, setTRef] = useState("");
   // Account history
+  const [openId, setOpenId] = useState<string | null>(null);
   const [historyId, setHistoryId] = useState<string | null>(null);
   const [history, setHistory] = useState<AccountEvent[] | null>(null);
   // Assign existing transactions
@@ -191,7 +194,13 @@ export function AccountsManager({
     <>
       {totals.size > 0 && (
         <div className="card">
-          <div className="card-t">Across your accounts</div>
+          <div className="card-t">
+            Across your accounts
+            <InfoTip label="About these balances">
+              These are the balances you have recorded. They are not your net worth, and they are separate from your
+              budget buckets.
+            </InfoTip>
+          </div>
           {[...totals].map(([ccy, t]) => (
             <p key={ccy} style={{ marginTop: 6 }}>
               <strong>{money(t.held, ccy)}</strong> held
@@ -204,23 +213,18 @@ export function AccountsManager({
               <span className="muted"> ({ccy})</span>
             </p>
           ))}
-          <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
-            These are the balances you have recorded. They are not your net
-            worth, and they are separate from your budget buckets.
-          </p>
         </div>
       )}
 
       {unassignedCount > 0 && active.length > 0 && (
         <div className="card" role="status">
-          <strong>
-            {unassignedCount} transaction{unassignedCount === 1 ? " is" : "s are"} not
-            assigned to any account.
+          <strong className="flex items-center gap-2">
+            {unassignedCount} transaction{unassignedCount === 1 ? " is" : "s are"} not assigned to any account.
+            <InfoTip label="About unassigned transactions">
+              They are not counted in any account balance. Nothing is assigned automatically: you choose, and you
+              confirm.
+            </InfoTip>
           </strong>
-          <p className="muted" style={{ marginTop: 4 }}>
-            They are not counted in any account balance. Nothing is assigned
-            automatically: you choose, and you confirm.
-          </p>
           <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
             <select
               className="minp"
@@ -264,28 +268,30 @@ export function AccountsManager({
         </div>
       )}
 
-      {accounts.map((a) => (
-        <div className="card" key={a.id} style={{ opacity: a.status === "active" ? 1 : 0.65 }}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {accounts.map((a) => (
+          <AccountTile
+            key={a.id}
+            name={a.name}
+            type={a.type}
+            typeLabel={a.typeLabel}
+            institution={a.institution}
+            currency={a.currency}
+            amountText={`${a.kind !== "liability" && a.balance < 0 ? "−" : ""}${money(a.kind === "liability" ? a.owed : a.balance, a.currency)}`}
+            amountCaption={a.kind === "liability" ? "owed" : undefined}
+            status={a.status}
+            belowZero={a.belowZero}
+            open={openId === a.id}
+            onToggle={() => setOpenId(openId === a.id ? null : a.id)}
+            controls={`account-${a.id}`}
+          />
+        ))}
+      </div>
+      {accounts.filter((a) => a.id === openId).map((a) => (
+        <div className="card" id={`account-${a.id}`} key={a.id}>
+          <div className="card-t">{a.name}</div>
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <strong>{a.name}</strong>
-              {a.status !== "active" && <span className="muted"> · {a.status}</span>}
-              <div className="muted">
-                {a.typeLabel}
-                {a.institution ? ` · ${a.institution}` : ""} · {a.currency}
-              </div>
-              <div style={{ marginTop: 4, fontSize: 18, fontWeight: 700 }}>
-                {a.kind === "liability" ? (
-                  <>
-                    {money(a.owed, a.currency)} <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>owed</span>
-                  </>
-                ) : (
-                  <>
-                    {a.balance < 0 ? "−" : ""}
-                    {money(a.balance, a.currency)}
-                  </>
-                )}
-              </div>
               {a.belowZero && (
                 <div className="error" role="status" style={{ marginTop: 6 }}>
                   This balance is below zero. A record may be missing: check your
