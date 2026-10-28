@@ -5,6 +5,7 @@ import { LogOut, Plus, Sprout } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useLogSheet } from "../log/LogSheetProvider";
 import { MAIN_NAV, MANAGE_NAV, isActive, type NavItem } from "./nav-items";
 
 function Item({
@@ -50,16 +51,14 @@ export function Sidebar({
   path,
   email,
   unread,
-  onLog,
   onLogout,
 }: {
   path: string;
   email?: string;
   unread: number;
-  /** Open the log sheet in place; without it the button goes to the Overview, which opens it */
-  onLog?: () => void;
   onLogout: () => void;
 }) {
+  const { open: openLog, busy } = useLogSheet();
   const logClass =
     "flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
   return (
@@ -71,15 +70,9 @@ export function Sidebar({
         <span className="font-display text-lg font-semibold tracking-tight">FinTrack</span>
       </div>
 
-      {onLog ? (
-        <button type="button" className={logClass} onClick={onLog} data-testid="log-sidebar">
-          <Plus className="h-4 w-4" aria-hidden /> Log transaction
-        </button>
-      ) : (
-        <Link href="/dashboard?log=1" className={logClass} data-testid="log-sidebar">
-          <Plus className="h-4 w-4" aria-hidden /> Log transaction
-        </Link>
-      )}
+      <button type="button" className={logClass} onClick={openLog} disabled={busy} data-testid="log-sidebar">
+        <Plus className="h-4 w-4" aria-hidden /> Log transaction
+      </button>
 
       <nav aria-label="Primary" className="flex flex-1 flex-col gap-1 overflow-y-auto">
         {MAIN_NAV.map((n) => (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthlySeries } from "./monthly-series";
+import { monthlySeries, percentChange } from "./monthly-series";
 
 const fx = { NGN: 1, USD: 1000 };
 const now = new Date(Date.UTC(2026, 9, 28, 12)); // 28 Oct 2026
@@ -28,5 +28,16 @@ describe("monthlySeries", () => {
     expect(s[2].income).toBe(2100);
     expect(s[1].expenses).toBe(40);
     expect(s[0].expenses).toBe(0);
+  });
+});
+
+describe("percentChange", () => {
+  it("is the whole-percent change, up or down", () => {
+    expect(percentChange(112, 100)).toBe(12);
+    expect(percentChange(92, 100)).toBe(-8);
+    expect(percentChange(100, 100)).toBe(0);
+  });
+  it("is null when last month had nothing to compare with", () => {
+    expect(percentChange(50, 0)).toBeNull();
   });
 });

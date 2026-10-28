@@ -5,16 +5,12 @@ import { Plus } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { useLogSheet } from "../log/LogSheetProvider";
 import { MAIN_NAV, isActive } from "./nav-items";
 
 /** Four tabs and a raised + for logging, with the home-indicator safe area below */
-export function MobileTabBar({
-  path,
-  onLog,
-}: {
-  path: string;
-  onLog?: () => void;
-}) {
+export function MobileTabBar({ path }: { path: string }) {
+  const { open: openLog, busy } = useLogSheet();
   const reduce = useReducedMotion();
   const spring = reduce ? { duration: 0 } : ease.spring;
   const tabs = MAIN_NAV.map((n) => {
@@ -53,15 +49,9 @@ export function MobileTabBar({
     >
       {tabs.slice(0, 2)}
       <div className="flex justify-center">
-        {onLog ? (
-          <button type="button" className={cn(fabClass, "-mt-5")} onClick={onLog} aria-label="Log transaction" data-testid="fab">
-            {fabIcon}
-          </button>
-        ) : (
-          <Link href="/dashboard?log=1" className={cn(fabClass, "-mt-5")} aria-label="Log transaction" data-testid="fab">
-            {fabIcon}
-          </Link>
-        )}
+        <button type="button" className={cn(fabClass, "-mt-5")} onClick={openLog} disabled={busy} aria-label="Log transaction" data-testid="fab">
+          {fabIcon}
+        </button>
       </div>
       {tabs.slice(2)}
     </nav>

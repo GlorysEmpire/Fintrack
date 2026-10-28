@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Droplets, Info } from "lucide-react";
+import { Droplets } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   activeBuckets,
@@ -14,6 +13,7 @@ import {
   type MonthBucketState,
 } from "@fintrack/domain";
 import { bucketColor } from "@/lib/bucket-colors";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ProgressRing } from "./ProgressRing";
 import { SectionTitle } from "./SectionTitle";
 
@@ -27,14 +27,6 @@ type Props = {
 /** One ring per bucket: how much of it is still there, in plain words. */
 export function BucketRings({ plan, states, base, scope }: Props) {
   const reduce = useReducedMotion();
-  /** Buckets whose rule line is showing; tap the (i) again to hide it */
-  const [shown, setShown] = useState<Set<string>>(new Set());
-  const toggle = (id: string) =>
-    setShown((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
   const hint = scope === "total" ? "all time" : "this month";
 
   if (!plan) {
@@ -51,8 +43,9 @@ export function BucketRings({ plan, states, base, scope }: Props) {
   const byId = new Map(states.map((b) => [b.bucketId, b]));
   const cards = sortBucketsByPlanOrder(activeBuckets(plan.buckets)).map((meta, i) => {
     const b = byId.get(meta.id);
-    const alloc = b ? b.opening + b.allocated : 0;
-    const left = alloc - (b?.spent || 0);
+    // What it held before spending, counting any approved exception, and what is left
+    const alloc = b ? b.opening + b.allocated + b.moved : 0;
+    const left = b ? b.closing : 0;
     const over = left < 0;
     const fraction = alloc > 0 ? left / alloc : 0;
     const status = over
@@ -92,16 +85,10 @@ export function BucketRings({ plan, states, base, scope }: Props) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-1">
                   <div className="truncate text-sm font-semibold">{c.meta.name || c.id}</div>
-                  <button
-                    type="button"
-                    aria-label={`How the ${c.meta.name || c.id} bucket works`}
-                    aria-expanded={shown.has(c.id)}
-                    aria-controls={`bucket-rule-${c.id}`}
-                    onClick={() => toggle(c.id)}
-                    className="-m-2 shrink-0 rounded-full p-2 text-subtle transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                  >
-                    <Info className="h-4 w-4" aria-hidden />
-                  </button>
+                  <InfoTip label={`How the ${c.meta.name || c.id} bucket works`} align="end">
+                    {bucketRuleLabel(c.meta, base)}
+                    {c.meta.carryOver ? " · carries over" : " · resets monthly"}
+                  </InfoTip>
                 </div>
                 <div className="font-display text-base font-semibold tabular-nums" style={{ color: c.over ? c.color : undefined }}>
                   {c.over ? "−" : ""}
@@ -113,12 +100,6 @@ export function BucketRings({ plan, states, base, scope }: Props) {
                 </div>
               </div>
             </div>
-            {shown.has(c.id) && (
-              <p id={`bucket-rule-${c.id}`} className="mt-2 border-t border-border pt-2 text-xs text-muted-foreground">
-                {bucketRuleLabel(c.meta, base)}
-                {c.meta.carryOver ? " · carries over" : " · resets monthly"}
-              </p>
-            )}
           </motion.div>
         ))}
       </div>

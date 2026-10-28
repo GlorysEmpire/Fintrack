@@ -1,7 +1,9 @@
 import type { ComponentProps } from "react";
 import { Receipt } from "lucide-react";
+import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState } from "../EmptyState";
 import { TransactionList } from "../TransactionList";
+import { useLogSheet } from "../log/LogSheetProvider";
 import { rowsToShow } from "./rows";
 import type { TxRow } from "@/lib/tx-row";
 
@@ -12,12 +14,11 @@ export type TxListProps = Omit<ComponentProps<typeof TransactionList>, "rows">;
 export function RecentTransactions({
   rows,
   listProps,
-  onLog,
 }: {
   rows: TxRow[];
   listProps: TxListProps;
-  onLog: () => void;
 }) {
+  const { open: openLog } = useLogSheet();
   const shown = rowsToShow(rows, 8, listProps.serverNow);
   return (
     <>
@@ -29,7 +30,7 @@ export function RecentTransactions({
             title="No transactions yet"
             description="Log income or an expense to start tracking this month."
             actionLabel="Log transaction"
-            onAction={onLog}
+            onAction={openLog}
           />
         ) : (
           <TransactionList rows={shown} {...listProps} />
@@ -49,11 +50,13 @@ export function HistoryTransactions({
   if (rows.length === 0) return null;
   return (
     <>
-      <div className="sec">History (past months)</div>
-      <div className="card">
-        <p className="mb-2.5 text-xs text-subtle">
+      <div className="sec flex items-center gap-2">
+        History (past months)
+        <InfoTip label="About history">
           These logs are kept. A transaction you file under an earlier month appears here.
-        </p>
+        </InfoTip>
+      </div>
+      <div className="card">
         <TransactionList rows={rowsToShow(rows, 20, listProps.serverNow)} {...listProps} />
       </div>
     </>

@@ -7,6 +7,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageShell } from "@/components/motion/PageShell";
+import { LogSheetProvider } from "./log/LogSheetProvider";
 import { formatLongDate } from "@/lib/format-date";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MobileTabBar } from "./shell/MobileTabBar";
@@ -25,14 +26,11 @@ export function AppShell({
   baseCurrency,
   email,
   inboxUnread = 0,
-  onLog,
 }: {
   children: React.ReactNode;
   baseCurrency: string;
   email?: string;
   inboxUnread?: number;
-  /** Open the log sheet right here. Pages without one send you to the Overview, which opens it. */
-  onLog?: () => void;
 }) {
   const path = usePathname();
   const router = useRouter();
@@ -68,18 +66,19 @@ export function AppShell({
   const name = displayName(email);
 
   return (
+    <LogSheetProvider>
     <div className="app-shell">
-      <Sidebar path={path} email={email} unread={inboxUnread} onLog={onLog} onLogout={logout} />
+      <Sidebar path={path} email={email} unread={inboxUnread} onLogout={logout} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card/60 px-4 py-3 backdrop-blur-xl md:px-8">
           <div className="min-w-0">
-            <h1 className="truncate font-display text-lg font-semibold leading-tight md:hidden">
+            <div className="truncate font-display text-lg font-semibold leading-tight md:hidden">
               {hello && name ? `${hello}, ${name}` : "FinTrack"}
-            </h1>
-            <h1 className="hidden font-display text-xl font-semibold leading-tight md:block">
+            </div>
+            <div className="hidden font-display text-xl font-semibold leading-tight md:block">
               {pageTitle(path)}
-            </h1>
+            </div>
             <p id="tb-date" className="text-xs text-muted-foreground">
               {dateLabel}
             </p>
@@ -106,8 +105,9 @@ export function AppShell({
           <PageShell>{children}</PageShell>
         </div>
 
-        <MobileTabBar path={path} onLog={onLog} />
+        <MobileTabBar path={path} />
       </div>
     </div>
+    </LogSheetProvider>
   );
 }

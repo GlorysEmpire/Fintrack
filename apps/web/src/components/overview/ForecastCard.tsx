@@ -1,5 +1,6 @@
 import type { CurrencyCode } from "@fintrack/domain";
 import { Money } from "@/components/Money";
+import { InfoTip } from "@/components/ui/info-tip";
 import { bucketColor } from "@/lib/bucket-colors";
 
 export type Forecast = {
@@ -11,10 +12,12 @@ export function ForecastCard({ forecast, base }: { forecast: Forecast | null; ba
   if (!forecast || forecast.gross <= 0) return null;
   return (
     <div className="card glass-card">
-      <div className="card-t">Next month projection</div>
-      <p className="m-sub mb-2.5">
-        Based on this month&apos;s income pattern + recurring rules
-      </p>
+      <div className="card-t">
+        Next month projection
+        <InfoTip label="About the projection">
+          Based on this month&apos;s income pattern and your recurring rules.
+        </InfoTip>
+      </div>
       <div className="m-val mb-3">
         <Money amount={forecast.gross} currency={base} />
       </div>

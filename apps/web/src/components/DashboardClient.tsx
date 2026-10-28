@@ -6,10 +6,11 @@
  * chart-wrap, legend, wf-row, wf-dot, wf-name, wf-rule, wf-right, wf-amt, wf-pct,
  * sec, bucket-card, fab — same as FinTrack.html
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   activeBuckets,
+  safeToSpend,
   type BudgetPlan,
   type CurrencyCode,
   type DashboardLayout,
@@ -18,7 +19,7 @@ import {
   type WaterfallResult,
   visibleSections,
 } from "@fintrack/domain";
-import { LogTransactionModal, type AccountOption } from "./LogTransactionModal";
+import type { AccountOption } from "./LogTransactionModal";
 import { DashboardCustomize } from "./DashboardCustomize";
 import { AppShell } from "./AppShell";
 import { MetricCard } from "./overview/MetricCard";
@@ -33,7 +34,8 @@ import {
   type TxListProps,
 } from "./overview/RecentTransactions";
 import { CountUp } from "./motion/CountUp";
-import { Stagger, StaggerItem } from "./motion/Stagger";
+import { monthlySeries, percentChange } from "@/lib/monthly-series";
+import { Stagger } from "./motion/Stagger";
 import { ArrowDownLeft, ArrowUpRight, CalendarDays, Scale } from "lucide-react";
 import { SetPasswordPrompt } from "./SetPasswordPrompt";
 import type { TxRow } from "@/lib/tx-row";
@@ -110,16 +112,6 @@ export function DashboardClient(props: Props) {
     forecastNext = null,
   } = props;
   void onboarding;
-  const [modalOpen, setModalOpen] = useState(false);
-  // The + button on other pages lands here with ?log=1 to open the log sheet
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("log") === "1") {
-      setModalOpen(true);
-      url.searchParams.delete("log");
-      window.history.replaceState(null, "", url.pathname + url.search);
-    }
-  }, []);
   /** Summary scope — TOTAL (all history) is the default so returning users
    *  never see their data look wiped on a new month. THIS MONTH shows only the
    *  current calendar month (the previous default behavior). */
@@ -185,9 +177,13 @@ export function DashboardClient(props: Props) {
 
   const isTotal = scope === "total";
   const expenseRowsAll = useMemo(() => [...historyTransactions, ...transactions], [historyTransactions, transactions]);
+  // Last month against this month, for the change shown under Income and Expenses
+  const [lastMonth, thisMonth] = useMemo(
+    () => monthlySeries(expenseRowsAll, base, fx, 2, new Date(serverNow)),
+    [expenseRowsAll, base, fx, serverNow]
+  );
   // "Safe to spend" is this month's Spend bucket, whatever the TOTAL / THIS MONTH toggle says
-  const spendState = snapshot.buckets.find((b) => b.bucketId === "spend");
-  const spendTotal = spendState ? spendState.opening + spendState.allocated : 0;
+  const safe = safeToSpend(snapshot.buckets, daysLeft);
   const expenseRows = scope === "total" ? [...historyTransactions, ...transactions] : transactions;
 
   const metrics = (
@@ -214,10 +210,16 @@ export function DashboardClient(props: Props) {
         label="Total expenses"
         sub={isTotal ? "all time" : "all buckets combined"}
         valueClassName="text-destructive"
+        delta={isTotal ? undefined : { pct: percentChange(thisMonth.expenses, lastMonth.expenses), upIsGood: false }}
       >
         <CountUp value={view.expenses} currency={base} />
       </MetricCard>
-      <MetricCard icon={ArrowDownLeft} label="Income logged" sub={isTotal ? "all time" : "actual this month"}>
+      <MetricCard
+        icon={ArrowDownLeft}
+        label="Income logged"
+        sub={isTotal ? "all time" : "actual this month"}
+        delta={isTotal ? undefined : { pct: percentChange(thisMonth.income, lastMonth.income), upIsGood: true }}
+      >
         <CountUp value={view.income} currency={base} />
       </MetricCard>
       <MetricCard icon={CalendarDays} label="Days left" sub="in this month">
@@ -267,7 +269,7 @@ export function DashboardClient(props: Props) {
       case "recent_transactions":
         return (
           <div key={id}>
-            <RecentTransactions rows={transactions} listProps={txListProps} onLog={() => setModalOpen(true)} />
+            <RecentTransactions rows={transactions} listProps={txListProps} />
             <HistoryTransactions rows={historyTransactions} listProps={txListProps} />
           </div>
         );
@@ -281,29 +283,27 @@ export function DashboardClient(props: Props) {
       baseCurrency={baseCurrency}
       email={email}
       inboxUnread={inboxUnread}
-      onLog={() => setModalOpen(true)}
     >
       <div className="dash-toolbar">
         <DashboardCustomize layout={layout} />
       </div>
 
-      <Stagger id="overview">
-        <StaggerItem>
+      <h1 className="sr-only">Overview</h1>
+      <Stagger>
+        <div>
           <HeroBalanceCard
             base={base}
-            spendLeft={spendState ? spendState.closing : null}
-            spendTotal={spendTotal}
+            safe={safe}
             monthNet={snapshot.net}
             netTotal={totals.net}
             daysLeft={daysLeft}
-            hasIncome={snapshot.income > 0 || spendTotal > 0}
-            onLogIncome={() => setModalOpen(true)}
+            hasIncome={snapshot.income > 0 || safe.total > 0}
           />
-        </StaggerItem>
-        <StaggerItem>
+        </div>
+        <div>
           <SetPasswordPrompt hasPassword={hasPassword} />
-        </StaggerItem>
-        <StaggerItem>
+        </div>
+        <div>
         <div className="mb-3 flex items-center gap-1.5">
           <button
             type="button"
@@ -322,26 +322,12 @@ export function DashboardClient(props: Props) {
             THIS MONTH
           </button>
         </div>
-        </StaggerItem>
-        {sections.map((id) => (
-          <StaggerItem key={id}>{renderSection(id)}</StaggerItem>
-        ))}
-        <StaggerItem>
+        </div>
+        {sections.map((id) => renderSection(id))}
+        <div>
           <ForecastCard forecast={forecastNext} base={base} />
-        </StaggerItem>
+        </div>
       </Stagger>
-
-      <LogTransactionModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        plan={plan}
-        sources={sources}
-        accounts={accounts}
-        baseCurrency={baseCurrency}
-        fx={fx}
-        bucketRemaining={bucketRemaining}
-        monthIncome={snapshot.income}
-      />
     </AppShell>
   );
 }

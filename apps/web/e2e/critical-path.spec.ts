@@ -143,6 +143,27 @@ test("a bank import is read-only: review, record once, no duplicates", async ({ 
   expect(again.transactions.filter((t: { bankImportId: string | null }) => t.bankImportId)).toHaveLength(1);
 });
 
+for (const [label, viewport] of [
+  ["desktop", { width: 1280, height: 800 }],
+  ["phone", { width: 375, height: 812 }],
+] as const) {
+  test(`the + button logs an expense from another page (${label})`, async ({ page }) => {
+    await signedInUser(page);
+    await page.setViewportSize(viewport);
+    await page.goto("/trends");
+    await page.getByRole("button", { name: "Log transaction" }).first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: "Log transaction" })).toBeVisible();
+    await dialog.getByLabel("Amount").fill("500");
+    await dialog.getByRole("button", { name: /^Save/ }).click();
+    await expect(dialog).toBeHidden();
+    // It landed in the Spend bucket, and the user stayed on the page they were on
+    await expect(page).toHaveURL(/\/trends$/);
+    const saved = await (await page.request.get("/api/export")).json();
+    expect(saved.transactions.filter((t: { type: string; amount: string }) => t.type === "expense" && Number(t.amount) === 500)).toHaveLength(1);
+  });
+}
+
 for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard", "/expenses"]) {
   test(`${path} fits a phone and its controls have names`, async ({ page }) => {
     await signedInUser(page);

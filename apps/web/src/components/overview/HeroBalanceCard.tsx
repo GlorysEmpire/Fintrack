@@ -1,18 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
-import { formatMoney, type CurrencyCode } from "@fintrack/domain";
+import { formatMoney, type CurrencyCode, type SafeToSpend } from "@fintrack/domain";
 import { CountUp } from "@/components/motion/CountUp";
+import { InfoTip } from "@/components/ui/info-tip";
+import { useLogSheet } from "../log/LogSheetProvider";
 import { durations, ease } from "@/lib/motion";
 
 type Props = {
   base: CurrencyCode;
-  /** What is left in the Spend bucket this month; null when the plan has none */
-  spendLeft: number | null;
-  /** What Spend started the month with */
-  spendTotal: number;
+  /** From the domain's safeToSpend(): this month's Spend bucket */
+  safe: SafeToSpend;
   /** Net of everything not yet spent this month; shown when the plan has no Spend bucket */
   monthNet: number;
   /** All income minus all expenses, ever */
@@ -20,40 +19,43 @@ type Props = {
   daysLeft: number;
   /** Any income logged this month */
   hasIncome: boolean;
-  onLogIncome: () => void;
 };
 
 /** "Safe to spend": the one number to open the app for, with a plain-language why. */
 export function HeroBalanceCard({
   base,
-  spendLeft,
-  spendTotal,
+  safe,
   monthNet,
   netTotal,
   daysLeft,
   hasIncome,
-  onLogIncome,
 }: Props) {
   const reduce = useReducedMotion();
-  const [open, setOpen] = useState(false);
-  const hasSpend = spendLeft !== null;
-  const value = Math.max(0, hasSpend ? spendLeft : monthNet);
-  const fraction = hasSpend && spendTotal > 0 ? Math.max(0, Math.min(1, spendLeft / spendTotal)) : 0;
-  const perDay = daysLeft > 0 && value > 0 ? value / daysLeft : 0;
+  const { open: openLog } = useLogSheet();
+  const hasSpend = safe.hasSpendBucket;
+  const value = hasSpend ? safe.amount : Math.max(0, monthNet);
+  const fraction = safe.fraction;
+  const perDay = hasSpend ? safe.perDay : daysLeft > 0 ? value / daysLeft : 0;
 
   return (
     <div className="mb-4 rounded-2xl bg-[image:var(--gradient-money)] p-px shadow-[var(--glow-primary)]">
-      <div className="relative overflow-hidden rounded-[calc(var(--radius-xl)-1px)] bg-card p-5 md:p-6">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full opacity-60 blur-3xl"
-          style={{ background: "var(--color-primary-soft)" }}
-        />
+      <div className="relative rounded-[calc(var(--radius-xl)-1px)] bg-card p-5 md:p-6">
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+          <div
+            className="absolute -right-16 -top-24 h-64 w-64 rounded-full opacity-60 blur-3xl"
+            style={{ background: "var(--color-primary-soft)" }}
+          />
+        </div>
         <div className="relative grid gap-5 md:grid-cols-[1.2fr_1fr] md:items-center">
           <div>
             <div className="flex items-center gap-2 text-label font-semibold uppercase tracking-wider text-muted-foreground">
               <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
               {hasSpend ? "Safe to spend" : "Left this month"}
+              <InfoTip label="About safe to spend">
+                {hasSpend
+                  ? "Your income is split into buckets, like Tithe, Save and Invest. Spend is the bucket you can use for anything day to day, and the rest is already set aside for its purpose. So this is the amount you can spend today without touching the rest of your plan."
+                  : "Everything you have logged this month, minus what you have already spent."}
+              </InfoTip>
             </div>
             <div className="font-display text-hero font-bold tabular-nums tracking-tight text-primary md:bg-[image:var(--gradient-money)] md:bg-clip-text md:text-transparent">
               <CountUp value={value} currency={base} />
@@ -72,7 +74,7 @@ export function HeroBalanceCard({
             {!hasIncome && (
               <button
                 type="button"
-                onClick={onLogIncome}
+                onClick={openLog}
                 className="mt-3 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
               >
                 Log income
@@ -86,7 +88,7 @@ export function HeroBalanceCard({
                 <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
                   <span>Spend bucket left</span>
                   <span className="tabular-nums">
-                    {formatMoney(Math.max(0, spendLeft), base)} of {formatMoney(spendTotal, base)}
+                    {formatMoney(safe.amount, base)} of {formatMoney(safe.total, base)}
                   </span>
                 </div>
                 <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Spend bucket left" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)}>
@@ -109,25 +111,6 @@ export function HeroBalanceCard({
           </div>
         </div>
 
-        <div className="relative mt-4 border-t border-border pt-3">
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls="hero-explain"
-            onClick={() => setOpen((o) => !o)}
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            What does safe to spend mean?
-            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
-          </button>
-          {open && (
-            <p id="hero-explain" className="mt-2 max-w-prose text-sm text-muted-foreground">
-              Your income is split into buckets, like Tithe, Save and Invest. Spend is the bucket you can use for anything
-              day to day, and the rest is already set aside for its purpose. So this is the amount you can spend today
-              without touching the rest of your plan.
-            </p>
-          )}
-        </div>
       </div>
     </div>
   );
