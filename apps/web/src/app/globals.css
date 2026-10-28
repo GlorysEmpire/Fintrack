@@ -19,6 +19,8 @@
   --color-secondary-foreground: oklch(0.92 0.01 160);
   --color-destructive: oklch(0.62 0.2 20);
   --color-border: oklch(0.28 0.015 160);
+  --color-subtle: oklch(0.5 0.02 160);
+  --color-warning: oklch(0.84 0.14 95);
   --color-ring: oklch(0.78 0.15 160);
   --color-bucket-tithe: oklch(0.68 0.14 300);
   --color-bucket-emergency: oklch(0.68 0.14 250);
@@ -68,8 +70,6 @@
 /* Derived and elevation tokens. Declared per theme because var() inside a
    custom property resolves where it is declared, so .light needs its own copy. */
 :root, .dark {
-  --color-subtle: oklch(0.5 0.02 160);
-  --color-warning: oklch(0.84 0.14 95);
   --color-primary-soft: color-mix(in oklch, var(--color-primary) 12%, transparent);
   --color-destructive-soft: color-mix(in oklch, var(--color-destructive) 12%, transparent);
   --gradient-money: linear-gradient(135deg, oklch(0.85 0.17 160), oklch(0.88 0.14 105));
@@ -82,7 +82,6 @@
 
 .light {
   --color-subtle: oklch(0.55 0.02 160);
-  --color-warning: oklch(0.84 0.14 95);
   --color-primary-soft: color-mix(in oklch, var(--color-primary) 14%, transparent);
   --color-destructive-soft: color-mix(in oklch, var(--color-destructive) 12%, transparent);
   --gradient-money: linear-gradient(135deg, oklch(0.62 0.15 160), oklch(0.7 0.14 115));
@@ -197,11 +196,11 @@ select.inp { cursor: pointer; }
 
 /* ─── CARDS & METRICS ────────────────────────────────────────────── */
 .m-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
-.metric { background: color-mix(in oklch, var(--color-card) 60%, transparent); backdrop-filter: blur(16px); border: 1px solid color-mix(in oklch, white 6%, transparent); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow-glass); }
+.metric { background: var(--surface-glass); backdrop-filter: blur(16px); border: 1px solid var(--color-border); border-radius: var(--radius-xl); padding: 1rem 1.25rem; box-shadow: var(--shadow-glass); }
 .m-lbl { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--color-muted-foreground); margin-bottom: 5px; }
 .m-val { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
 .m-sub { font-size: 11px; color: var(--color-subtle); margin-top: 4px; }
-.card { background: var(--color-card); border: 1px solid var(--color-border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.card { background: var(--surface-glass); backdrop-filter: blur(16px); border: 1px solid var(--color-border); border-radius: var(--radius-xl); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow-glass); }
 .card-t { font-size: 12px; font-weight: 600; color: var(--color-muted-foreground); margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .chart-wrap { position: relative; height: 200px; }
@@ -530,7 +529,7 @@ a.nav-btn {
   cursor: pointer; font-size: 11px; padding: 2px 6px; font-family: inherit;
 }
 .tx-del:hover { color: var(--color-destructive); }
-a { color: var(--color-primary); text-decoration: none; }
+@layer base { a { color: var(--color-primary); text-decoration: none; } }
 button, input, select, textarea { font: inherit; color: inherit; }
 
 
@@ -699,3 +698,23 @@ label.mlbl { display: block; }
 .impact-table tbody th { font-weight: 500; color: var(--color-muted-foreground); }
 .impact-table tr[data-changed="true"] td:last-child { color: var(--color-foreground); font-weight: 700; }
 .danger-zone { border-color: color-mix(in oklch, var(--color-destructive) 45%, transparent); }
+
+/* Lift on hover: pointer devices only, never under reduced motion */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .card, .metric { transition: transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s; }
+  .card:hover, .metric:hover { transform: translateY(-2px); }
+}
+
+/* Skeleton shimmer */
+@keyframes skeleton-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--color-muted) 30%, color-mix(in oklch, var(--color-primary) 10%, var(--color-muted)) 50%, var(--color-muted) 70%);
+  background-size: 200% 100%;
+  animation: skeleton-sweep 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer { animation: none; background: var(--color-muted); }
+}

@@ -9,13 +9,9 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Plus, Receipt } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   activeBuckets,
-  bucketRuleLabel,
-  formatMoney,
-  sortBucketsByPlanOrder,
-  transactionLockState,
   type BudgetPlan,
   type CurrencyCode,
   type DashboardLayout,
@@ -25,16 +21,21 @@ import {
   visibleSections,
 } from "@fintrack/domain";
 import { LogTransactionModal, type AccountOption } from "./LogTransactionModal";
-import { TransactionList } from "./TransactionList";
-import { DashboardCharts } from "./DashboardCharts";
 import { DashboardCustomize } from "./DashboardCustomize";
 import { AppShell } from "./AppShell";
-import { EmptyState } from "./EmptyState";
-import { Money } from "./Money";
+import { MetricCard } from "./overview/MetricCard";
+import { CashflowChartCard } from "./overview/CashflowChartCard";
+import { BucketWaterfall } from "./overview/BucketWaterfall";
+import { BucketDetail } from "./overview/BucketDetail";
+import { ForecastCard } from "./overview/ForecastCard";
+import {
+  HistoryTransactions,
+  RecentTransactions,
+  type TxListProps,
+} from "./overview/RecentTransactions";
+import { CountUp } from "./motion/CountUp";
 import { SetPasswordPrompt } from "./SetPasswordPrompt";
-import { bucketColor } from "@/lib/bucket-colors";
 import type { TxRow } from "@/lib/tx-row";
-import { useCountUp } from "@/hooks/useCountUp";
 
 type Tx = TxRow;
 
@@ -119,9 +120,6 @@ export function DashboardClient(props: Props) {
   /** Bucket rows follow the same scope: all-time replay or current month */
   const bucketStates = scope === "total" ? allTimeBuckets : snapshot.buckets;
   const actual = snapshot.income;
-  const incomeAnim = useCountUp(view.income);
-  const expenseAnim = useCountUp(view.expenses);
-  const netAnim = useCountUp(Math.abs(view.net));
   // Only real waterfall from logged income (no sample 100k demo)
   const chartWaterfall =
     snapshot.waterfall && actual > 0 ? snapshot.waterfall : null;
@@ -163,26 +161,8 @@ export function DashboardClient(props: Props) {
 
   const sections = visibleSections(layout);
 
-  /**
-   * Rows for a short list: every transaction that can still be edited is always
-   * shown (so it can be found and corrected while its window is open), then the
-   * most recent locked ones up to `limit`. Order is unchanged (newest first).
-   */
-  function rowsToShow(all: Tx[], limit: number): Tx[] {
-    const at = new Date(serverNow);
-    const editable = all.filter(
-      (t) => !transactionLockState(t.createdAt, at).locked
-    );
-    const keep = new Set(editable.map((t) => t.id));
-    for (const t of all) {
-      if (keep.size >= Math.max(limit, editable.length)) break;
-      keep.add(t.id);
-    }
-    return all.filter((t) => keep.has(t.id));
-  }
-
   /** Shared props for every transaction list on this page */
-  const txListProps = {
+  const txListProps: TxListProps = {
     plan,
     sources,
     accounts,
@@ -193,407 +173,41 @@ export function DashboardClient(props: Props) {
     serverNow,
   };
 
-  /** Overview metrics with odometer count-up */
-  function Metrics() {
-    const isTotal = scope === "total";
-    return (
-      <div className="m-grid">
-          <div className="metric">
-            <div className="m-lbl">
-              {isTotal ? "Net" : "Net remaining"}
-            </div>
-            <div
-              className="m-val"
-              style={{ color: view.net >= 0 ? "var(--color-primary)" : "var(--color-destructive)" }}
-            >
-              <Money amount={netAnim} currency={base} />
-            </div>
-            <div className="m-sub">
-              {isTotal
-                ? view.net >= 0
-                  ? "cumulative savings"
-                  : "cumulative deficit"
-                : view.net >= 0
-                  ? "available"
-                  : "over budget"}
-            </div>
-          </div>
-          <div className="metric">
-            <div className="m-lbl">Total expenses</div>
-            <div className="m-val" style={{ color: "var(--color-destructive)" }}>
-              <Money amount={expenseAnim} currency={base} />
-            </div>
-            <div className="m-sub">
-              {isTotal ? "all time" : "all buckets combined"}
-            </div>
-          </div>
-          <div className="metric">
-            <div className="m-lbl">Income logged</div>
-            <div className="m-val">
-              <Money amount={incomeAnim} currency={base} />
-            </div>
-            <div className="m-sub">
-              {isTotal ? "all time" : "actual this month"}
-            </div>
-          </div>
-          <div className="metric">
-            <div className="m-lbl">Days left</div>
-            <div className="m-val font-mono tabular-nums">{daysLeft}</div>
-            <div className="m-sub">in this month</div>
-          </div>
-        </div>
-    );
-  }
+  const isTotal = scope === "total";
+  const expenseRows = scope === "total" ? [...historyTransactions, ...transactions] : transactions;
 
-  function ForecastCard() {
-    if (!forecastNext || forecastNext.gross <= 0) return null;
-    return (
-      <div className="card glass-card">
-        <div className="card-t">Next month projection</div>
-        <p className="m-sub" style={{ marginBottom: 10 }}>
-          Based on this month&apos;s income pattern + recurring rules
-        </p>
-        <div className="m-val" style={{ marginBottom: 12 }}>
-          <Money amount={forecastNext.gross} currency={base} />
-        </div>
-        <div className="legend">
-          {forecastNext.lines.slice(0, 6).map((l, i) => (
-            <div className="legend-item" key={l.bucketId}>
-              <div
-                className="legend-dot"
-                style={{ background: bucketColor(l.bucketId, i) }}
-              />
-              {l.emoji} {l.name}:{" "}
-              <Money amount={l.allocated} currency={base} />
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  /** Charts show remaining balances (not total allocated) */
-  function Charts() {
-    if (!remainingWaterfall || remainingWaterfall.gross <= 0) {
-      return (
-        <div className="two-col">
-          <div className="card">
-            <div className="card-t">📊 Income allocation (remaining)</div>
-            <p style={{ fontSize: 12, color: "var(--color-subtle)" }}>
-              Log income to fund buckets. Remaining starts at 0.
-            </p>
-          </div>
-          <div className="card">
-            <div className="card-t">📈 Monthly cash flow</div>
-            <p style={{ fontSize: 12, color: "var(--color-subtle)" }}>
-              Log income to populate charts.
-            </p>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <DashboardCharts
-        waterfall={remainingWaterfall}
-        baseCurrency={baseCurrency}
-        remainingMode
-      />
-    );
-  }
-
-  /**
-   * Legacy wfRows — exact structure:
-   * wf-row > wf-dot | name+rule | flex row with bar + amounts
-   */
-  function BucketBalances() {
-    if (!plan) {
-      return (
-        <div className="card">
-          <div className="card-t">
-            💧 Bucket balances{" "}
-            <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-subtle)" }}>
-              {scope === "total"
-                ? "— all-time allocated vs spent"
-                : "— allocated vs remaining after expenses"}
-            </span>
-          </div>
-          <p style={{ fontSize: 12, color: "var(--color-subtle)" }}>
-            <Link href="/settings">Set a plan</Link> to track buckets.
-          </p>
-        </div>
-      );
-    }
-
-    const orderedPlan = sortBucketsByPlanOrder(activeBuckets(plan.buckets));
-    const byId = new Map(bucketStates.map((b) => [b.bucketId, b]));
-    const rows: {
-      id: string;
-      emoji: string;
-      name: string;
-      rule: string;
-      alloc: number;
-      spent: number;
-      left: number;
-      over: boolean;
-      p: number;
-      col: string;
-      wfc: string;
-    }[] = orderedPlan.map((meta, i) => {
-      const b = byId.get(meta.id);
-      const alloc = b ? b.opening + b.allocated : 0;
-      const spent = b?.spent || 0;
-      const left = alloc - spent;
-      const over = left < 0;
-      const p = alloc > 0 ? Math.min(100, (spent / alloc) * 100) : 0;
-      const wfc = bucketColor(meta.id, i);
-      const col = over ? "var(--color-destructive)" : p > 85 ? "var(--color-warning)" : wfc;
-      return {
-        id: meta.id,
-        emoji: meta.emoji || "",
-        name: meta.name || meta.id,
-        rule: `${bucketRuleLabel(meta, base)}${
-          meta.carryOver ? " · carries over" : " · resets monthly"
-        }`,
-        alloc,
-        spent,
-        left,
-        over,
-        p,
-        col,
-        wfc,
-      };
-    });
-
-    return (
-      <div className="card">
-        <div className="card-t">
-          💧 Bucket balances{" "}
-          <span style={{ fontSize: 12, fontWeight: 400, color: "var(--color-subtle)" }}>
-            {scope === "total"
-              ? "— all-time allocated vs spent"
-              : "— allocated vs remaining after expenses"}
-          </span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 0 }}>
-          {rows.map((r) => (
-            <div className="wf-row" key={r.id}>
-              <div className="wf-dot" style={{ background: r.wfc }} />
-              <div style={{ flex: 1 }}>
-                <div className="wf-name">
-                  {r.emoji} {r.name}
-                </div>
-                <div className="wf-rule">{r.rule}</div>
-              </div>
-              <div className="wf-right" style={{ minWidth: 160 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <div style={{ flex: 1, maxWidth: 80 }}>
-                    <div
-                      style={{
-                        height: 4,
-                        background: "var(--color-muted)",
-                        borderRadius: 2,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${r.p}%`,
-                          background: r.col,
-                          borderRadius: 2,
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div className="wf-amt" style={{ color: r.col }}>
-                      {r.over ? "−" : ""}
-                      {formatMoney(Math.abs(r.left), base)}
-                      {r.over && (
-                        <span
-                          style={{
-                            fontSize: 12,
-                            color: "var(--color-destructive)",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {" "}
-                          BELOW ZERO
-                        </span>
-                      )}
-                    </div>
-                    <div className="wf-pct">
-                      of {formatMoney(r.alloc, base)} ·{" "}
-                      {view.income > 0
-                        ? ((r.alloc / view.income) * 100).toFixed(0)
-                        : 0}
-                      %
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  /** Legacy renderBucketBalances cards */
-  function BucketDetail() {
-    if (!plan || bucketStates.length === 0) return null;
-    return (
-      <>
-        <div className="sec">
-          Bucket spending detail
-          {scope === "total" ? " — all time" : " — this month"}
-        </div>
-        <div id="bucket-balances-card">
-          {bucketStates.map((b, i) => {
-            const meta = plan.buckets.find((x) => x.id === b.bucketId);
-            const alloc = b.opening + b.allocated;
-            const spent = b.spent;
-            const remaining = b.closing;
-            const over = remaining < 0;
-            const pctUsed =
-              alloc > 0
-                ? Math.min(100, (spent / alloc) * 100)
-                : spent > 0
-                  ? 100
-                  : 0;
-            const barColor = over
-              ? "var(--color-destructive)"
-              : pctUsed > 85
-                ? "var(--color-warning)"
-                : "var(--color-primary)";
-            const remColor = over
-              ? "var(--color-destructive)"
-              : remaining < alloc * 0.2
-                ? "var(--color-warning)"
-                : "var(--color-foreground)";
-            const wfc = bucketColor(b.bucketId, i);
-
-            // Expenses for this bucket — this month's txs, or all txs for TOTAL
-            const scopeTxs =
-              scope === "total"
-                ? [...historyTransactions, ...transactions]
-                : transactions;
-            const spentTxs = scopeTxs.filter(
-              (t) => t.type === "e" && t.bucketId === b.bucketId
-            );
-
-            return (
-              <div className="bucket-card" key={b.bucketId}>
-                <div className="bucket-row">
-                  <div className="bucket-dot" style={{ background: wfc }} />
-                  <div className="bucket-name">
-                    {meta?.emoji} {meta?.name}
-                  </div>
-                  <div className="bucket-alloc">
-                    Allocated: {formatMoney(alloc, base)}
-                  </div>
-                  <div className="bucket-remaining" style={{ color: remColor }}>
-                    {over ? "−" : "+"}
-                    {formatMoney(Math.abs(remaining), base)}
-                    {over && (
-                      <span
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "var(--color-destructive)",
-                          marginLeft: 4,
-                        }}
-                      >
-                        OVER
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="bucket-prog">
-                  <div
-                    className="bucket-prog-fill"
-                    style={{ width: `${pctUsed}%`, background: barColor }}
-                  />
-                </div>
-                <div style={{ fontSize: 12, color: "var(--color-subtle)", marginTop: 3 }}>
-                  Spent: {formatMoney(spent, base)} of {formatMoney(alloc, base)}
-                </div>
-                {spentTxs.length > 0 && (
-                  <div className="bucket-txs">
-                    {spentTxs.map((t) => (
-                      <div className="bucket-tx" key={t.id}>
-                        <div className="bucket-tx-label">
-                          {t.note || t.category || "Expense"}
-                          {t.override && (
-                            <span className="bucket-tx-cross">cross-bucket</span>
-                          )}
-                          {t.reason && (
-                            <div className="bucket-tx-reason">
-                              &quot;{t.reason}&quot;
-                            </div>
-                          )}
-                        </div>
-                        <div className="bucket-tx-amt">
-                          −{formatMoney(t.amount, t.currency as CurrencyCode)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </>
-    );
-  }
-
-  /** This month's latest rows, each with its edit window or lock */
-  function RecentTx() {
-    const rows = rowsToShow(transactions, 8);
-    return (
-      <>
-        <div className="sec">Recent transactions</div>
-        <div className="card">
-          {rows.length === 0 ? (
-            <EmptyState
-              icon={Receipt}
-              title="No transactions yet"
-              description="Log income or an expense to start tracking this month."
-              actionLabel="Log transaction"
-              onAction={() => setModalOpen(true)}
-            />
-          ) : (
-            <TransactionList rows={rows} {...txListProps} />
-          )}
-        </div>
-      </>
-    );
-  }
-
-  function HistoryTx() {
-    if (historyTransactions.length === 0) return null;
-    const rows = rowsToShow(historyTransactions, 20);
-    return (
-      <>
-        <div className="sec">History (past months)</div>
-        <div className="card">
-          <p style={{ fontSize: 12, color: "var(--color-subtle)", marginBottom: 10 }}>
-            These logs are kept. A transaction you file under an earlier month
-            appears here.
-          </p>
-          <TransactionList rows={rows} {...txListProps} />
-        </div>
-      </>
-    );
-  }
+  const metrics = (
+    <div className="m-grid">
+      <MetricCard
+        label={isTotal ? "Net" : "Net remaining"}
+        sub={
+          isTotal
+            ? view.net >= 0
+              ? "cumulative savings"
+              : "cumulative deficit"
+            : view.net >= 0
+              ? "available"
+              : "over budget"
+        }
+        valueClassName={view.net >= 0 ? "text-primary" : "text-destructive"}
+      >
+        <CountUp value={Math.abs(view.net)} currency={base} />
+      </MetricCard>
+      <MetricCard
+        label="Total expenses"
+        sub={isTotal ? "all time" : "all buckets combined"}
+        valueClassName="text-destructive"
+      >
+        <CountUp value={view.expenses} currency={base} />
+      </MetricCard>
+      <MetricCard label="Income logged" sub={isTotal ? "all time" : "actual this month"}>
+        <CountUp value={view.income} currency={base} />
+      </MetricCard>
+      <MetricCard label="Days left" sub="in this month">
+        <span className="font-display tabular-nums">{daysLeft}</span>
+      </MetricCard>
+    </div>
+  );
 
   function renderSection(id: DashboardSectionId) {
     switch (id) {
@@ -601,22 +215,39 @@ export function DashboardClient(props: Props) {
         if (!(onboarding === "skipped" && !plan)) return null;
         return (
           <div className="card" key={id}>
-            <p style={{ fontSize: 12, color: "var(--color-muted-foreground)" }}>
+            <p className="text-xs text-muted-foreground">
               Plan not set —{" "}
               <Link href="/settings">build your plan in Plan settings</Link>.
             </p>
           </div>
         );
       case "metrics":
-        return <div key={id}>{Metrics()}</div>;
+        return <div key={id}>{metrics}</div>;
       case "charts":
-        return <div key={id}>{Charts()}</div>;
+        return (
+          <div key={id}>
+            <CashflowChartCard waterfall={remainingWaterfall} baseCurrency={baseCurrency} />
+          </div>
+        );
       case "bucket_balances":
-        return <div key={id}>{BucketBalances()}</div>;
+        return (
+          <div key={id}>
+            <BucketWaterfall plan={plan} states={bucketStates} base={base} income={view.income} scope={scope} />
+          </div>
+        );
       case "bucket_detail":
-        return <div key={id}>{BucketDetail()}</div>;
+        return (
+          <div key={id}>
+            <BucketDetail plan={plan} states={bucketStates} base={base} scope={scope} expenses={expenseRows} />
+          </div>
+        );
       case "recent_transactions":
-        return <div key={id}>{RecentTx()} {HistoryTx()}</div>;
+        return (
+          <div key={id}>
+            <RecentTransactions rows={transactions} listProps={txListProps} onLog={() => setModalOpen(true)} />
+            <HistoryTransactions rows={historyTransactions} listProps={txListProps} />
+          </div>
+        );
       default:
         return null;
     }
@@ -634,14 +265,7 @@ export function DashboardClient(props: Props) {
 
       <SetPasswordPrompt hasPassword={hasPassword} />
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          marginBottom: 12,
-        }}
-      >
+      <div className="mb-3 flex items-center gap-1.5">
         <button
           type="button"
           className={`nav-btn${scope === "total" ? " on" : ""}`}
@@ -661,7 +285,7 @@ export function DashboardClient(props: Props) {
       </div>
 
       {sections.map((id) => renderSection(id))}
-      <ForecastCard />
+      <ForecastCard forecast={forecastNext} base={base} />
 
       <motion.button
         type="button"

@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { PageShell } from "@/components/motion/PageShell";
 import {
   ArrowLeftRight,
   Inbox,
@@ -128,7 +129,9 @@ export function AppShell({
         })}
       </div>
 
-      <div className="shell-main">{children}</div>
+      <div className="shell-main">
+        <PageShell>{children}</PageShell>
+      </div>
     </div>
   );
 }

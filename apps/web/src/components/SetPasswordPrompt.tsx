@@ -47,7 +47,7 @@ export function SetPasswordPrompt({ hasPassword }: { hasPassword: boolean }) {
         marginBottom: 16,
         borderColor: "color-mix(in oklch, var(--color-primary) 35%, transparent)",
         background:
-          "color-mix(in oklch, var(--color-primary) 8%, var(--color-card, transparent))",
+          "color-mix(in oklab, var(--color-primary) 8%, var(--color-card, transparent))",
       }}
       role="status"
     >
