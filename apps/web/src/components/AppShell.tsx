@@ -1,55 +1,48 @@
 "use client";
 
 /**
- * App chrome: topbar + nav with Lucide icons + theme toggle.
+ * App chrome. Desktop: a left sidebar and a slim top bar. Phone: a greeting
+ * bar on top and a tab bar with a raised + at the bottom.
  */
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { PageShell } from "@/components/motion/PageShell";
-import {
-  ArrowLeftRight,
-  Inbox,
-  Landmark,
-  LayoutDashboard,
-  Settings,
-  Sparkles,
-  TrendingUp,
-  Wallet,
-} from "lucide-react";
 import { formatLongDate } from "@/lib/format-date";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { cn } from "@/lib/utils";
+import { MobileTabBar } from "./shell/MobileTabBar";
+import { Sidebar } from "./shell/Sidebar";
+import { UserMenu } from "./shell/UserMenu";
+import { displayName, pageTitle } from "./shell/nav-items";
 
-const TABS = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/income", label: "Income", icon: Wallet },
-  { href: "/expenses", label: "Expenses", icon: ArrowLeftRight },
-  { href: "/accounts", label: "Accounts", icon: Landmark },
-  { href: "/trends", label: "Trends", icon: TrendingUp },
-  { href: "/settings", label: "Plan", icon: Settings },
-  { href: "/advisor", label: "Advisor", icon: Sparkles },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-] as const;
+function greeting(hour: number): string {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export function AppShell({
   children,
   baseCurrency,
   email,
   inboxUnread = 0,
+  onLog,
 }: {
   children: React.ReactNode;
   baseCurrency: string;
   email?: string;
   inboxUnread?: number;
+  /** Open the log sheet right here. Pages without one send you to the Overview, which opens it. */
+  onLog?: () => void;
 }) {
   const path = usePathname();
   const router = useRouter();
   const [ccy, setCcy] = useState(baseCurrency);
   const [dateLabel, setDateLabel] = useState("");
+  const [hello, setHello] = useState("");
   useEffect(() => {
-    setDateLabel(formatLongDate(new Date()));
+    const now = new Date();
+    setDateLabel(formatLongDate(now));
+    setHello(greeting(now.getHours()));
   }, []);
 
   async function onCurrencyChange(value: string) {
@@ -72,65 +65,48 @@ export function AppShell({
     router.refresh();
   }
 
+  const name = displayName(email);
+
   return (
     <div className="app-shell">
-      <div className="topbar">
-        <div className="tb-left">
-          <h1>Finance dashboard</h1>
-          <p id="tb-date">{dateLabel}</p>
-        </div>
-        <div className="tb-right">
-          Base currency
-          <select
-            id="tb-ccy"
-            aria-label="Base currency"
-            value={ccy}
-            onChange={(e) => onCurrencyChange(e.target.value)}
-          >
-            <option value="NGN">₦ NGN</option>
-            <option value="USD">$ USD</option>
-            <option value="GBP">£ GBP</option>
-            <option value="EUR">€ EUR</option>
-          </select>
-          <ThemeToggle />
-          <button type="button" className="tb-ghost" onClick={logout} title={email}>
-            Log out
-          </button>
-        </div>
-      </div>
+      <Sidebar path={path} email={email} unread={inboxUnread} onLog={onLog} onLogout={logout} />
 
-      <div className="nav">
-        {TABS.map((t) => {
-          const on =
-            path === t.href ||
-            (t.href !== "/dashboard" && path.startsWith(t.href));
-          const Icon = t.icon;
-          return (
-            <div key={t.href} className="nav-btn-wrap">
-              <Link
-                href={t.href}
-                className={cn("nav-btn", on && "on")}
-              >
-                <Icon className="h-3.5 w-3.5" aria-hidden />
-                {t.label}
-                {t.href === "/inbox" && inboxUnread > 0 && (
-                  <span className="badge">{inboxUnread}</span>
-                )}
-              </Link>
-              {on && (
-                <motion.span
-                  layoutId="nav-underline"
-                  className="nav-underline"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card/60 px-4 py-3 backdrop-blur-xl md:px-8">
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-lg font-semibold leading-tight md:hidden">
+              {hello && name ? `${hello}, ${name}` : "FinTrack"}
+            </h1>
+            <h1 className="hidden font-display text-xl font-semibold leading-tight md:block">
+              {pageTitle(path)}
+            </h1>
+            <p id="tb-date" className="text-xs text-muted-foreground">
+              {dateLabel}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <select
+              id="tb-ccy"
+              aria-label="Base currency"
+              value={ccy}
+              onChange={(e) => onCurrencyChange(e.target.value)}
+              className="h-9 cursor-pointer rounded-lg border border-border bg-muted px-2 text-sm text-foreground outline-none focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <option value="NGN">₦ NGN</option>
+              <option value="USD">$ USD</option>
+              <option value="GBP">£ GBP</option>
+              <option value="EUR">€ EUR</option>
+            </select>
+            <ThemeToggle />
+            <UserMenu email={email} unread={inboxUnread} onLogout={logout} />
+          </div>
+        </header>
 
-      <div className="shell-main">
-        <PageShell>{children}</PageShell>
+        <div className="shell-main">
+          <PageShell>{children}</PageShell>
+        </div>
+
+        <MobileTabBar path={path} onLog={onLog} />
       </div>
     </div>
   );

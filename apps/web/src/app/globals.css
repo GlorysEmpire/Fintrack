@@ -180,13 +180,6 @@ select.inp { cursor: pointer; }
 /* ─── MAIN ───────────────────────────────────────────────────────── */
 #s-main { display: none; flex-direction: column; flex: 1; overflow: hidden; }
 #s-main.on { display: flex; }
-.topbar { background: var(--color-card); border-bottom: 1px solid var(--color-border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-.tb-left h1 { font-size: 16px; font-weight: 700; }
-.tb-left p { font-size: 11px; color: var(--color-muted-foreground); margin-top: 2px; }
-.tb-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--color-muted-foreground); }
-.tb-right select { padding: 5px 8px; background: var(--color-muted); border: 1px solid var(--color-border); border-radius: 7px; font-size: 12px; color: var(--color-foreground); outline: none; cursor: pointer; }
-.nav { display: flex; gap: 4px; padding: 10px 24px; background: var(--color-card); border-bottom: 1px solid var(--color-border); flex-shrink: 0; overflow-x: auto; }
-.nav::-webkit-scrollbar { display: none; }
 .nav-btn { padding: 7px 14px; font-size: 12px; font-weight: 500; border-radius: 7px; border: .5px solid var(--color-border); background: transparent; color: var(--color-muted-foreground); cursor: pointer; white-space: nowrap; font-family: inherit; transition: all .15s; }
 .nav-btn.on { background: var(--color-muted); color: var(--color-foreground); border-color: var(--color-border); }
 .nav-btn:hover:not(.on) { background: var(--color-muted); }
@@ -277,9 +270,6 @@ select.inp { cursor: pointer; }
 .btn-ghost:hover { background: var(--color-card); color: var(--color-foreground); }
 
 /* ─── FAB ────────────────────────────────────────────────────────── */
-.fab { position: fixed; bottom: 24px; right: 24px; width: 52px; height: 52px; border-radius: 50%; background: var(--color-primary); color: #000; border: none; font-size: 26px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 24px rgba(34,201,138,.4); z-index: 100; transition: transform .15s; line-height: 1; }
-.fab:hover { transform: scale(1.08); }
-.fab:active { transform: scale(.93); }
 
 /* ─── MODAL ──────────────────────────────────────────────────────── */
 /* Portaled to <body>; overlay must cover the whole app shell on every viewport. */
@@ -386,8 +376,11 @@ select.minp { cursor: pointer; font-size: 13px; }
   overflow-x: hidden;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 24px;
-  padding-bottom: 80px;
+  padding: 1.5rem;
+}
+@media (min-width: 768px) {
+  .app-shell { flex-direction: row; }
+  .shell-main { padding: 2rem; }
 }
 /* Links styled as legacy .nav-btn buttons */
 a.nav-btn {
@@ -409,17 +402,6 @@ a.nav-btn {
   justify-content: center;
   padding: 0 4px;
 }
-.tb-ghost {
-  padding: 5px 8px;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
-  font-size: 11px;
-  color: var(--color-subtle);
-  cursor: pointer;
-  font-family: inherit;
-}
-.tb-ghost:hover { color: var(--color-foreground); }
 
 /* Auth / setup screens (not in original main dashboard) */
 .container {
@@ -585,11 +567,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   100% { background-position: -100% 0; }
 }
 
-.nav-btn-wrap { position: relative; display: inline-flex; }
-.nav-underline {
-  position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px;
-  border-radius: 2px; background: var(--color-primary);
-}
 
 /* ─── FORM LABELS & CONFIRMATIONS ────────────────────────────────── */
 label.mlbl { display: block; }

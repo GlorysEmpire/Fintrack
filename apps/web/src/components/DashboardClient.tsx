@@ -6,10 +6,8 @@
  * chart-wrap, legend, wf-row, wf-dot, wf-name, wf-rule, wf-right, wf-amt, wf-pct,
  * sec, bucket-card, fab — same as FinTrack.html
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Plus } from "lucide-react";
 import {
   activeBuckets,
   type BudgetPlan,
@@ -110,6 +108,15 @@ export function DashboardClient(props: Props) {
   } = props;
   void onboarding;
   const [modalOpen, setModalOpen] = useState(false);
+  // The + button on other pages lands here with ?log=1 to open the log sheet
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("log") === "1") {
+      setModalOpen(true);
+      url.searchParams.delete("log");
+      window.history.replaceState(null, "", url.pathname + url.search);
+    }
+  }, []);
   /** Summary scope — TOTAL (all history) is the default so returning users
    *  never see their data look wiped on a new month. THIS MONTH shows only the
    *  current calendar month (the previous default behavior). */
@@ -258,6 +265,7 @@ export function DashboardClient(props: Props) {
       baseCurrency={baseCurrency}
       email={email}
       inboxUnread={inboxUnread}
+      onLog={() => setModalOpen(true)}
     >
       <div className="dash-toolbar">
         <DashboardCustomize layout={layout} />
@@ -286,19 +294,6 @@ export function DashboardClient(props: Props) {
 
       {sections.map((id) => renderSection(id))}
       <ForecastCard forecast={forecastNext} base={base} />
-
-      <motion.button
-        type="button"
-        className="fab"
-        data-testid="fab"
-        title="Log transaction"
-        aria-label="Log transaction"
-        onClick={() => setModalOpen(true)}
-        whileTap={{ scale: 0.93 }}
-        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-      >
-        <Plus className="h-6 w-6" strokeWidth={2.5} />
-      </motion.button>
 
       <LogTransactionModal
         open={modalOpen}
