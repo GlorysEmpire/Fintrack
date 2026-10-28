@@ -61,6 +61,7 @@ export function LogSheetProvider({ children }: { children: React.ReactNode }) {
           fx={ctx.fx}
           bucketRemaining={ctx.bucketRemaining}
           monthIncome={ctx.monthIncome}
+          streak={ctx.streak}
         />
       )}
     </Ctx.Provider>

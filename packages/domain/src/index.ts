@@ -21,3 +21,4 @@ export * from "./performance";
 export * from "./imports";
 export * from "./insights";
 export * from "./safe-to-spend";
+export * from "./logging-streak";

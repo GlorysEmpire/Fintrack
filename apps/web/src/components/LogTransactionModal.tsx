@@ -1,789 +1,226 @@
 "use client";
 
 /**
- * Log income or expense — or edit one that is still inside its edit window.
- *
- * Expense default. Category → bucket rules; cross-bucket needs Note.
- * A bucket is blocked at zero: an expense that is more than its bucket has
- * available is not saved. The form says what is available against what was
- * asked for, and never suggests taking the money from another bucket.
+ * Log income or an expense, or edit one that is still inside its edit window.
+ * The state and rules live in log/useLogForm; this puts the pieces together.
  */
-import { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  activeBuckets,
-  allocateWaterfall,
-  amountInBase,
-  BUCKET_LIMIT_RULE,
-  EDIT_WINDOW_RULE,
-  editWindowRemainingLabel,
-  EXPENSE_CATEGORIES,
-  formatMoney,
-  isCrossBucket,
-  sortBucketsByPlanOrder,
-  transactionLockState,
-  BUCKET_DESCRIPTIONS,
-  type BudgetPlan,
-  type CurrencyCode,
-} from "@fintrack/domain";
-import { formatDay, toDateInputValue } from "@/lib/format-date";
-import type { TxRow } from "@/lib/tx-row";
-import { toast } from "@/components/ui/toast";
+import { EDIT_WINDOW_RULE, editWindowRemainingLabel } from "@fintrack/domain";
+import { formatDay } from "@/lib/format-date";
+import { InfoTip } from "@/components/ui/info-tip";
+import { BucketNotice } from "./log/BucketNotice";
+import { CategoryPicker } from "./log/CategoryPicker";
+import { AmountField } from "./log/AmountField";
+import { ExceptionPanel } from "./log/ExceptionPanel";
+import { IncomeFields } from "./log/IncomeFields";
+import { LogSheetShell } from "./log/LogSheetShell";
+import { StreakBadge } from "./log/StreakBadge";
+import { TypeSwitch } from "./log/TypeSwitch";
+import type { LogFormProps } from "./log/types";
+import { useLogForm } from "./log/useLogForm";
 
-type Source = {
-  id: string;
-  name: string;
-  emoji: string;
-  currency: string;
-};
+export type { AccountOption } from "./log/types";
 
-type Shortfall = {
-  bucketName: string;
-  /** Base currency */
-  short: number;
-  options: { bucketId: string; name: string; available: number; protected: boolean }[];
-};
-
-export type AccountOption = {
-  id: string;
-  name: string;
-  currency: string;
-  /** Debts (cards, loans) are marked so the user knows spending raises what is owed */
-  kind: string;
-};
-
-type Props = {
-  open: boolean;
-  onClose: () => void;
-  plan: BudgetPlan | null;
-  sources: Source[];
-  /** The user's active accounts; omit if there are none */
-  accounts?: AccountOption[];
-  baseCurrency: string;
-  fx: Record<string, number>;
-  /** Optional live remaining by bucket id (base currency, this month) for warnings */
-  bucketRemaining?: Record<string, number>;
-  /** Income already logged this month (base currency), for the split preview */
-  monthIncome?: number;
-  /** Set to edit this transaction instead of logging a new one */
-  editing?: TxRow | null;
-};
-
-const CURRENCIES: CurrencyCode[] = ["NGN", "USD", "GBP", "EUR"];
-
-export function LogTransactionModal({
-  open,
-  onClose,
-  plan,
-  sources,
-  accounts = [],
-  baseCurrency,
-  fx,
-  bucketRemaining = {},
-  monthIncome = 0,
-  editing = null,
-}: Props) {
-  const router = useRouter();
-  const base = baseCurrency as CurrencyCode;
-  const isEdit = Boolean(editing);
-
-  const [type, setType] = useState<"i" | "e">("e");
-  const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState<CurrencyCode>(base || "NGN");
-  const [sourceId, setSourceId] = useState(sources[0]?.id || "");
-  const [bucketId, setBucketId] = useState("");
-  const [category, setCategory] = useState("food");
-  const [note, setNote] = useState("");
-  const [accountId, setAccountId] = useState("");
-  // An expense bigger than its bucket: the user may approve funding the shortfall from another bucket
-  const [shortfall, setShortfall] = useState<Shortfall | null>(null);
-  const [fundBucket, setFundBucket] = useState("");
-  const [fundReason, setFundReason] = useState("");
-  const [fundConfirm, setFundConfirm] = useState(false);
-  const [dateKey, setDateKey] = useState("");
-  const [todayKey, setTodayKey] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  // Active buckets in the order the plan fills them. When editing a
-  // transaction whose bucket has since been archived, keep that one selectable.
-  const buckets = useMemo(() => {
-    if (!plan) return [];
-    const list = sortBucketsByPlanOrder(activeBuckets(plan.buckets));
-    const current = plan.buckets.find((b) => b.id === editing?.bucketId);
-    if (current?.archived) list.push(current);
-    return list;
-  }, [plan, editing]);
-
-  // Reset form when opened (default Expense), or load the transaction being edited
-  useEffect(() => {
-    if (!open) return;
-    const today = toDateInputValue(new Date());
-    setTodayKey(today);
-    setError(null);
-
-    if (editing) {
-      setType(editing.type === "i" ? "i" : "e");
-      setAmount(String(editing.amount));
-      setCurrency(editing.currency as CurrencyCode);
-      setSourceId(editing.sourceId || sources[0]?.id || "");
-      setBucketId(editing.bucketId || "");
-      setCategory(editing.category || "food");
-      setNote(editing.note || "");
-      setAccountId(editing.accountId || "");
-      setDateKey(toDateInputValue(editing.date));
-      return;
-    }
-
-    const active = plan ? sortBucketsByPlanOrder(activeBuckets(plan.buckets)) : [];
-    setType("e");
-    setAmount("");
-    setCurrency(base || "NGN");
-    setSourceId(sources[0]?.id || "");
-    setBucketId(active.find((b) => b.id === "spend")?.id || active[0]?.id || "");
-    setCategory("food");
-    setNote("");
-    setAccountId("");
-    setShortfall(null);
-    setDateKey(today);
-  }, [open, editing, base, sources, plan]);
-
-  // An account holds one currency, so only those in the chosen currency apply
-  const accountChoices = accounts.filter((a) => a.currency === currency);
-  useEffect(() => {
-    if (accountId && !accountChoices.some((a) => a.id === accountId)) {
-      setAccountId("");
-    }
-  }, [accountChoices, accountId]);
-
-  const amtNum = parseFloat(amount) || 0;
-  const amountBase = amountInBase(amtNum, currency, baseCurrency, fx);
-  const backdated = Boolean(dateKey) && dateKey !== todayKey;
-  /** The live balance hint is this month's: it only applies to this month's dates */
-  const inCurrentMonth = dateKey.slice(0, 7) === todayKey.slice(0, 7);
-
-  const selectedBucket = buckets.find((b) => b.id === bucketId);
-
-  // What this bucket can cover right now. When editing, the transaction's own
-  // amount is added back: it is being replaced, not added to.
-  const remaining = useMemo(() => {
-    if (type !== "e" || !inCurrentMonth) return undefined;
-    if (!(bucketId in bucketRemaining)) return undefined;
-    let left = bucketRemaining[bucketId];
-    if (
-      editing &&
-      editing.type === "e" &&
-      editing.bucketId === bucketId &&
-      toDateInputValue(editing.date).slice(0, 7) === todayKey.slice(0, 7)
-    ) {
-      left += amountInBase(editing.amount, editing.currency, baseCurrency, fx);
-    }
-    return left;
-  }, [type, inCurrentMonth, bucketId, bucketRemaining, editing, todayKey, baseCurrency, fx]);
-
-  const cross =
-    type === "e" && bucketId && category
-      ? isCrossBucket(bucketId, category)
-      : false;
-  /** More than the bucket has available: this expense will not be saved */
-  const overBalance =
-    type === "e" &&
-    amtNum > 0 &&
-    remaining !== undefined &&
-    amountBase > remaining + 0.005;
-  // An edit that only lowers the amount (same bucket, same month) is always
-  // allowed, even if the bucket is already below zero for another reason.
-  const onlyLowers =
-    Boolean(editing) &&
-    editing!.type === "e" &&
-    editing!.bucketId === bucketId &&
-    toDateInputValue(editing!.date).slice(0, 7) === dateKey.slice(0, 7) &&
-    amountBase <=
-      amountInBase(editing!.amount, editing!.currency, baseCurrency, fx) + 0.005;
-  const blockedHere = overBalance && !onlyLowers;
-  /** What the bucket has available against what was asked for. Never suggests another bucket. */
-  const shortfallText =
-    blockedHere && selectedBucket
-      ? remaining !== undefined && remaining > 0.005
-        ? `${selectedBucket.name} has ${formatMoney(remaining, base)} available. That does not cover ${formatMoney(amountBase, base)}.`
-        : `${selectedBucket.name} has nothing available. That does not cover ${formatMoney(amountBase, base)}.`
-      : "";
-
-  // What this income adds to each bucket: the plan is applied to the month's
-  // total income, so the preview is (month with this income) − (month without).
-  const incomePreview = useMemo(() => {
-    if (type !== "i" || !plan || amtNum <= 0 || !inCurrentMonth) return null;
-    let already = monthIncome;
-    if (
-      editing &&
-      editing.type === "i" &&
-      toDateInputValue(editing.date).slice(0, 7) === todayKey.slice(0, 7)
-    ) {
-      already -= amountInBase(editing.amount, editing.currency, baseCurrency, fx);
-    }
-    already = Math.max(0, already);
-    const before = new Map(
-      allocateWaterfall(already, plan).lines.map((l) => [l.bucketId, l.allocated])
-    );
-    return allocateWaterfall(already + amountBase, plan).lines.map((l) => ({
-      bucketId: l.bucketId,
-      name: l.name,
-      emoji: l.emoji,
-      added: l.allocated - (before.get(l.bucketId) || 0),
-    }));
-  }, [type, plan, amtNum, amountBase, inCurrentMonth, monthIncome, editing, todayKey, baseCurrency, fx]);
-
-  const convHint =
-    currency !== baseCurrency && amtNum > 0
-      ? `≈ ${formatMoney(amountBase, base)} in ${baseCurrency}`
-      : "";
-
-  const editWindow = editing ? transactionLockState(editing.createdAt) : null;
-
-  async function save(fundFrom?: { bucketId: string; reason: string }) {
-    setError(null);
-    setLoading(true);
-    try {
-      if (amtNum <= 0) throw new Error("Enter a valid amount");
-
-      if (type === "e" && plan && !bucketId) {
-        throw new Error("Pick a bucket for this expense.");
-      }
-
-      // Blocked at zero. An edit stops here. A NEW expense still goes to the
-      // server, which answers with the shortfall and the buckets that could
-      // fund it, so the user can approve an explicit exception.
-      if (blockedHere && isEdit) {
-        throw new Error(
-          `${shortfallText} ${isEdit ? "Nothing was changed." : "Nothing was recorded."}`
-        );
-      }
-
-      if (type === "e" && cross && !note.trim()) {
-        throw new Error(
-          "Cross-bucket spend blocked. Write a reason in the Note field, or choose a matching category."
-        );
-      }
-
-      if (type === "i" && !isEdit && sources.length === 0) {
-        throw new Error(
-          "Add an income source first (Income tab). We don’t invent sources for you."
-        );
-      }
-
-      if (type === "i" && !isEdit && !sourceId) {
-        throw new Error("Pick an income source.");
-      }
-
-      const payload: Record<string, unknown> = {
-        amount: amtNum,
-        currency,
-        note: note.trim() || null,
-        date: dateKey || null,
-        accountId: accountId || null,
-      };
-      if (!isEdit) payload.type = type;
-
-      if (type === "i") {
-        payload.sourceId = sourceId || null;
-      } else {
-        payload.bucketId = bucketId || null;
-        payload.category = category || null;
-        payload.reason = cross ? note.trim() : null;
-      }
-
-      if (fundFrom) payload.fundFrom = fundFrom;
-      const res = await fetch(
-        isEdit ? `/api/transactions/${editing!.id}` : "/api/transactions",
-        {
-          method: isEdit ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
-      const data = await res.json();
-
-      if (!data.ok) {
-        // Refused because the bucket can not cover it: offer the explicit exception (new expenses only)
-        if (data.blocked && data.shortfall?.options?.length > 0 && !isEdit) {
-          setShortfall(data.shortfall as Shortfall);
-          // Prefer a bucket that is not a protected, carry-over one
-          setFundBucket((data.shortfall.options.find((o: { protected: boolean }) => !o.protected) ?? data.shortfall.options[0]).bucketId);
-          setFundReason("");
-          setFundConfirm(false);
-        } else {
-          setShortfall(null);
-        }
-        throw new Error(data.error || "Failed to save");
-      }
-      setShortfall(null);
-
-      onClose();
-      toast(isEdit ? "Changes saved" : "Transaction saved");
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoading(false);
-    }
-  }
-
+export function LogTransactionModal(props: LogFormProps) {
+  const f = useLogForm(props);
+  const { open, onClose, plan, sources, accounts = [], bucketRemaining = {}, streak } = props;
   if (!open) return null;
 
-  const desc = BUCKET_DESCRIPTIONS[bucketId] || "";
+  const { base, isEdit, type } = f;
   const title = isEdit ? "Edit transaction" : "Log transaction";
+  const saveLabel = f.loading
+    ? "Saving…"
+    : type === "i" && !isEdit && sources.length === 0
+      ? "Add a source first"
+      : isEdit
+        ? "Save changes"
+        : "Save transaction";
 
-  // Render at <body> level so the overlay is above the entire app shell
-  // (topbar + nav + scrollport) and free of any ancestor layout/stacking
-  // interference on mobile.
-  return createPortal(
-    <div
-      className="ov on"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="log-tx-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
+  return (
+    <LogSheetShell
+      title={title}
+      onClose={onClose}
+      badge={!isEdit && streak ? <StreakBadge days={streak.current} loggedToday={streak.loggedToday} /> : null}
+      footer={
+        <div className="space-y-2">
+          <button
+            type="button"
+            className="h-12 w-full rounded-xl bg-primary font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={f.loading || (type === "i" && !isEdit && sources.length === 0)}
+            onClick={() => f.save()}
+          >
+            {saveLabel}
+          </button>
+          <button type="button" className="h-10 w-full rounded-xl text-sm font-medium text-muted-foreground hover:text-foreground" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      }
     >
-      <div className="modal glass-card">
+      {isEdit ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          {type === "i" ? "Income" : "Expense"}
+          {f.editWindow && !f.editWindow.locked && ` · you can still change or delete this for ${editWindowRemainingLabel(f.editWindow.msRemaining)}`}
+        </p>
+      ) : (
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <TypeSwitch type={type} onChange={(t) => { f.setType(t); f.setError(null); }} />
+          </div>
+          <InfoTip label="About editing" align="end">
+            {EDIT_WINDOW_RULE}
+          </InfoTip>
+        </div>
+      )}
+
+      <AmountField amount={f.amount} onAmount={f.setAmount} currency={f.currency} onCurrency={f.setCurrency} hint={f.convHint} />
+
+      <label className="mlbl mt-3 block" htmlFor="tx-date">
+        Date
+      </label>
+      <input
+        id="tx-date"
+        className="minp"
+        type="date"
+        name="date"
+        value={f.dateKey}
+        min="2000-01-01"
+        max={f.todayKey || undefined}
+        onChange={(e) => {
+          f.setDateKey(e.target.value);
+          f.setError(null);
+        }}
+      />
+      {f.backdated && f.dateKey && (
+        <p className="mt-1 text-xs text-subtle">Filed under {formatDay(`${f.dateKey}T12:00:00.000Z`)}. Its month is recalculated to include it.</p>
+      )}
+
+      {type === "i" && (
+        <IncomeFields
+          sources={sources}
+          sourceId={f.sourceId}
+          onSource={f.setSourceId}
+          isEdit={isEdit}
+          preview={f.incomePreview}
+          hasPlan={Boolean(plan)}
+          hasAmount={f.amtNum > 0}
+          inCurrentMonth={f.inCurrentMonth}
+          base={base}
+          onNavigate={onClose}
+        />
+      )}
+
+      {type === "e" && (
         <>
-            <h2 id="log-tx-title">{title}</h2>
-
-            {isEdit ? (
-              <p className="muted" style={{ marginBottom: 12 }}>
-                {type === "i" ? "💵 Income" : "💸 Expense"}
-                {editWindow && !editWindow.locked
-                  ? ` · You can still change or delete this for ${editWindowRemainingLabel(
-                      editWindow.msRemaining
-                    )}.`
-                  : ""}
-              </p>
-            ) : (
-              <div className="m-type-row">
-                <button
-                  type="button"
-                  className={`mtbtn${type === "e" ? " exp" : ""}`}
-                  aria-pressed={type === "e"}
-                  onClick={() => {
-                    setType("e");
-                    setError(null);
-                  }}
-                >
-                  💸 Expense
-                </button>
-                <button
-                  type="button"
-                  className={`mtbtn${type === "i" ? " inc" : ""}`}
-                  aria-pressed={type === "i"}
-                  onClick={() => {
-                    setType("i");
-                    setError(null);
-                  }}
-                >
-                  💵 Income
-                </button>
-              </div>
-            )}
-
-            <label className="mlbl" htmlFor="tx-amount">
-              Amount
-            </label>
-            <div className="mr2">
-              <input
-                id="tx-amount"
-                className="minp"
-                type="number"
-                name="amount"
-                min="0"
-                step="any"
-                inputMode="decimal"
-                placeholder="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                style={{ flex: 2 }}
-                autoFocus
-              />
-              <select
-                className="minp"
-                aria-label="Currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-                style={{ flex: 1 }}
-              >
-                {CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="mconv">{convHint}</div>
-
-            <label className="mlbl" htmlFor="tx-date">
-              Date{" "}
-              <span className="mlbl-hint">(when it happened)</span>
-            </label>
-            <input
-              id="tx-date"
+          <label className="mlbl mt-3 block" htmlFor="tx-bucket">
+            Draw from bucket
+          </label>
+          {f.buckets.length ? (
+            <select
+              id="tx-bucket"
               className="minp"
-              type="date"
-              name="date"
-              value={dateKey}
-              min="2000-01-01"
-              max={todayKey || undefined}
+              value={f.bucketId}
               onChange={(e) => {
-                setDateKey(e.target.value);
-                setError(null);
+                f.setBucketId(e.target.value);
+                f.setError(null);
               }}
-            />
-            <div className="mconv">
-              {backdated && dateKey
-                ? `Filed under ${formatDay(`${dateKey}T12:00:00.000Z`)}. Its month is recalculated to include it.`
-                : ""}
-            </div>
-
-            {type === "i" && (
-              <>
-                {sources.length === 0 ? (
-                  <div
-                    className="card"
-                    style={{
-                      marginTop: 8,
-                      marginBottom: 8,
-                      padding: 12,
-                    }}
-                  >
-                    <p style={{ marginBottom: 10, fontSize: 14, lineHeight: 1.45 }}>
-                      You don&apos;t have any income sources yet. Add one before
-                      logging income — we never invent defaults for you.
-                    </p>
-                    <Link
-                      href="/income"
-                      className="btn btn-primary"
-                      style={{ display: "inline-block" }}
-                      onClick={onClose}
-                    >
-                      Add income source →
-                    </Link>
-                  </div>
-                ) : (
-                  <>
-                    <label className="mlbl" htmlFor="tx-source">
-                      Income source
-                    </label>
-                    <select
-                      id="tx-source"
-                      className="minp"
-                      value={sourceId}
-                      onChange={(e) => setSourceId(e.target.value)}
-                      required
-                    >
-                      {sources.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.emoji} {s.name}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
-
-                {incomePreview && (sources.length > 0 || isEdit) && (
-                  <div className="modal-split" style={{ display: "block" }}>
-                    <div className="modal-split-t">
-                      This income adds to your buckets this month
-                    </div>
-                    <div className="modal-split-grid">
-                      {incomePreview.map((l) => (
-                        <div className="ms-item" key={l.bucketId}>
-                          <div className="ms-lbl">
-                            {l.emoji} {l.name}
-                          </div>
-                          <div className="ms-val" style={{ color: "var(--color-primary)" }}>
-                            +{formatMoney(l.added, base)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {plan && amtNum > 0 && !inCurrentMonth && (
-                  <p className="muted" style={{ marginTop: 10 }}>
-                    This income is split by your plan in the month it is filed
-                    under, and buckets that carry over are updated from there.
-                  </p>
-                )}
-
-                {!plan && amtNum > 0 && sources.length > 0 && (
-                  <p className="muted" style={{ marginTop: 10 }}>
-                    No plan yet. Income still saves. Set a plan in Settings to
-                    auto-split into buckets.
-                  </p>
-                )}
-              </>
-            )}
-
-            {type === "e" && (
-              <>
-                <label className="mlbl" htmlFor="tx-bucket">
-                  Draw from bucket{" "}
-                  <span className="mlbl-hint">
-                    (which allocation you are spending from)
-                  </span>
-                </label>
-                {buckets.length ? (
-                  <select
-                    id="tx-bucket"
-                    className="minp"
-                    value={bucketId}
-                    onChange={(e) => {
-                      setBucketId(e.target.value);
-                      setError(null);
-                    }}
-                  >
-                    {buckets.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.emoji} {b.name}
-                        {b.archived ? " (archived)" : ""}
-                        {!b.archived && inCurrentMonth && bucketRemaining[b.id] !== undefined
-                          ? bucketRemaining[b.id] < -0.005
-                            ? ` · ${formatMoney(-bucketRemaining[b.id], base)} below zero`
-                            : ` · ${formatMoney(Math.max(0, bucketRemaining[b.id]), base)} available`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <p className="muted">
-                    No plan buckets. Expense still logs. Set a plan for tracking.
-                  </p>
-                )}
-
-                <label className="mlbl" htmlFor="tx-category">
-                  Spent on
-                </label>
-                <select
-                  id="tx-category"
-                  className="minp"
-                  value={category}
-                  onChange={(e) => {
-                    setCategory(e.target.value);
-                    setError(null);
-                  }}
-                >
-                  {EXPENSE_CATEGORIES.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Cross-bucket / remaining notice (always visible when expense + bucket) */}
-                {bucketId && selectedBucket && (
-                  <div
-                    role="status"
-                    className="bucket-warning"
-                    style={{
-                      display: "block",
-                      marginTop: 8,
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      lineHeight: 1.55,
-                      background:
-                        cross || blockedHere ? "var(--color-destructive-soft)" : "var(--color-primary-soft)",
-                      border:
-                        cross || blockedHere
-                          ? "1px solid color-mix(in oklch, var(--color-destructive) 40%, transparent)"
-                          : "1px solid var(--color-primary)",
-                      color: cross || blockedHere ? "var(--color-destructive)" : "var(--color-primary)",
-                    }}
-                  >
-                    {cross ? (
-                      <>
-                        <strong>Cross-bucket:</strong> this category does not match{" "}
-                        <strong>{selectedBucket.name}</strong>
-                        . {desc ? `${desc}. ` : ""}
-                        {remaining !== undefined && (
-                          <>
-                            Remaining:{" "}
-                            <strong>{formatMoney(Math.max(0, remaining), base)}</strong>
-                            .{" "}
-                          </>
-                        )}
-                        <strong>Write a reason in the Note field to save.</strong>
-                      </>
-                    ) : blockedHere ? (
-                      <>
-                        <strong>{shortfallText}</strong> {BUCKET_LIMIT_RULE}
-                      </>
-                    ) : (
-                      <>
-                        <strong>
-                          {selectedBucket.emoji} {selectedBucket.name}
-                        </strong>
-                        {desc ? ` · ${desc}` : ""}
-                        {remaining !== undefined && (
-                          <>
-                            <br />
-                            Remaining this month:{" "}
-                            <strong>{formatMoney(Math.max(0, remaining), base)}</strong>
-                          </>
-                        )}
-                        {!inCurrentMonth && (
-                          <>
-                            <br />
-                            When you save, this is checked against what the
-                            bucket had available on the date you picked.
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {accountChoices.length > 0 && (
-              <>
-                <label className="mlbl" htmlFor="tx-account">
-                  Account (optional)
-                </label>
-                <select
-                  id="tx-account"
-                  className="minp"
-                  value={accountId}
-                  onChange={(e) => setAccountId(e.target.value)}
-                >
-                  <option value="">Not assigned to an account</option>
-                  {accountChoices.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                      {a.kind === "liability"
-                        ? type === "e"
-                          ? " (debt: raises what you owe)"
-                          : " (debt: lowers what you owe)"
-                        : ""}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-
-            <label className="mlbl" htmlFor="tx-note">
-              Note{" "}
-              <span
-                className="mlbl-hint"
-                style={cross ? { color: "var(--color-destructive)" } : undefined}
-              >
-                {cross ? "(required for cross-bucket)" : "(optional)"}
-              </span>
-            </label>
-            <input
-              id="tx-note"
-              className="minp"
-              value={note}
-              maxLength={500}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={
-                cross
-                  ? "Why are you drawing from this bucket?"
-                  : "e.g. client payment, DSTV, Uber"
-              }
-            />
-
-            {!isEdit && <p className="edit-rule">{EDIT_WINDOW_RULE}</p>}
-
-            {error && (
-              <div className="error" role="alert">
-                {error}
-              </div>
-            )}
-
-            {shortfall && (
-              <div className="card" style={{ marginTop: 12 }} role="group" aria-label="Fund the missing amount from another bucket">
-                <strong>
-                  {shortfall.bucketName} is short by {formatMoney(shortfall.short, base)}.
-                </strong>
-                <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-                  You can fund exactly that amount from another bucket. This is a deliberate change to your plan: it
-                  is recorded, with your reason, and shows as a deviation. Nothing is saved until you confirm.
-                </p>
-                <label className="mlbl" htmlFor="fund-bucket">
-                  Fund it from
-                </label>
-                <select id="fund-bucket" className="minp" value={fundBucket} onChange={(e) => setFundBucket(e.target.value)}>
-                  {shortfall.options.map((o) => (
-                    <option key={o.bucketId} value={o.bucketId}>
-                      {o.name} ({formatMoney(o.available, base)} available){o.protected ? " · protected bucket" : ""}
-                    </option>
-                  ))}
-                </select>
-                {shortfall.options.find((o) => o.bucketId === fundBucket)?.protected && (
-                  <p className="error" role="status" style={{ marginTop: 6 }}>
-                    This bucket builds up over time (it carries over). Taking from it sets back money you were
-                    saving. Be sure.
-                  </p>
-                )}
-                <label className="mlbl" htmlFor="fund-reason">
-                  Why? (required)
-                </label>
-                <input
-                  id="fund-reason"
-                  className="minp"
-                  maxLength={500}
-                  placeholder="e.g. Car repair could not wait"
-                  value={fundReason}
-                  onChange={(e) => setFundReason(e.target.value)}
-                />
-                <label style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "flex-start" }}>
-                  <input type="checkbox" checked={fundConfirm} onChange={(e) => setFundConfirm(e.target.checked)} />
-                  <span>
-                    I understand this moves {formatMoney(shortfall.short, base)} from my{" "}
-                    {shortfall.options.find((o) => o.bucketId === fundBucket)?.name ?? "other"} bucket and is recorded
-                    as a change to my plan.
-                  </span>
-                </label>
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  style={{ marginTop: 10 }}
-                  disabled={loading || !fundConfirm || fundReason.trim().length < 3}
-                  onClick={() => save({ bucketId: fundBucket, reason: fundReason.trim() })}
-                >
-                  Record with this exception
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={loading || (type === "i" && !isEdit && sources.length === 0)}
-              onClick={() => save()}
-              style={{ marginTop: 16 }}
             >
-              {loading
-                ? "Saving…"
-                : type === "i" && !isEdit && sources.length === 0
-                  ? "Add a source first"
-                  : isEdit
-                    ? "Save changes"
-                    : "Save transaction"}
-            </button>
+              {f.buckets.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.emoji} {b.name}
+                  {b.archived ? " (archived)" : ""}
+                  {!b.archived && f.inCurrentMonth && bucketRemaining[b.id] !== undefined
+                    ? bucketRemaining[b.id] < -0.005
+                      ? ` · ${f.formatMoney(-bucketRemaining[b.id])} below zero`
+                      : ` · ${f.formatMoney(Math.max(0, bucketRemaining[b.id]))} available`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-muted-foreground">No plan buckets. The expense still logs. Set a plan for tracking.</p>
+          )}
 
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
-              Cancel
-            </button>
+          <CategoryPicker
+            bucketId={f.bucketId}
+            category={f.category}
+            onPick={(id) => {
+              f.setCategory(id);
+              f.setError(null);
+            }}
+          />
+
+          {f.bucketId && f.selectedBucket && (
+            <BucketNotice
+              bucket={f.selectedBucket}
+              base={base}
+              remaining={f.remaining}
+              cross={f.cross}
+              blocked={f.blockedHere}
+              shortfallText={f.shortfallText}
+              inCurrentMonth={f.inCurrentMonth}
+            />
+          )}
         </>
-      </div>
-    </div>,
-    document.body
+      )}
+
+      {f.accountChoices.length > 0 && (
+        <>
+          <label className="mlbl mt-3 block" htmlFor="tx-account">
+            Account (optional)
+          </label>
+          <select id="tx-account" className="minp" value={f.accountId} onChange={(e) => f.setAccountId(e.target.value)}>
+            <option value="">Not assigned to an account</option>
+            {f.accountChoices.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+                {a.kind === "liability" ? (type === "e" ? " (debt: raises what you owe)" : " (debt: lowers what you owe)") : ""}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      {!isEdit && accounts.length > 1 && (
+        <p className="mt-2 text-xs text-subtle">
+          Moving money between your accounts?{" "}
+          <Link href="/accounts" className="font-medium underline" onClick={onClose}>
+            Make a transfer
+          </Link>
+        </p>
+      )}
+
+      <label className="mlbl mt-3 block" htmlFor="tx-note">
+        Note {f.cross ? <span className="text-destructive">(required for cross-bucket)</span> : <span className="font-normal normal-case text-subtle">(optional)</span>}
+      </label>
+      <input
+        id="tx-note"
+        className="minp"
+        value={f.note}
+        maxLength={500}
+        onChange={(e) => f.setNote(e.target.value)}
+        placeholder={f.cross ? "Why are you drawing from this bucket?" : "e.g. client payment, DSTV, Uber"}
+      />
+
+      {f.error && (
+        <div className="error mt-3" role="alert">
+          {f.error}
+        </div>
+      )}
+
+      {f.shortfall && (
+        <ExceptionPanel
+          shortfall={f.shortfall}
+          base={base}
+          fundBucket={f.fundBucket}
+          onFundBucket={f.setFundBucket}
+          reason={f.fundReason}
+          onReason={f.setFundReason}
+          confirmed={f.fundConfirm}
+          onConfirmed={f.setFundConfirm}
+          busy={f.loading}
+          onRecord={() => f.save({ bucketId: f.fundBucket, reason: f.fundReason.trim() })}
+        />
+      )}
+    </LogSheetShell>
   );
 }

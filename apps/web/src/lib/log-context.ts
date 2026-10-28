@@ -6,6 +6,8 @@
 import {
   activeBuckets,
   filterMonthTxs,
+  loggingStreak,
+  type LoggingStreak,
   monthSnapshot,
   startOfMonth,
   type BudgetPlan,
@@ -27,6 +29,8 @@ export type LogContext = {
   bucketRemaining: Record<string, number>;
   /** Income logged this month, base currency */
   monthIncome: number;
+  /** Days in a row something was recorded, as of before the sheet opens */
+  streak: LoggingStreak;
 };
 
 export async function getLogContext(user: {
@@ -36,13 +40,18 @@ export async function getLogContext(user: {
 }): Promise<LogContext> {
   await ensureMonthPacked(user.id);
   const fx = parseFx(user.fxRates);
-  const [plan, planRow, sources, accounts, monthRows, moves] = await Promise.all([
+  const now = new Date();
+  const [plan, planRow, sources, accounts, monthRows, moves, recorded] = await Promise.all([
     getUserPlan(user.id),
     prisma.budgetPlan.findUnique({ where: { userId: user.id } }),
     prisma.incomeSource.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
     prisma.account.findMany({ where: { userId: user.id, status: "active" }, orderBy: { name: "asc" } }),
     prisma.transaction.findMany({ where: { userId: user.id, date: { gte: startOfMonth() } } }),
     reallocationTxs(user.id),
+    prisma.transaction.findMany({
+      where: { userId: user.id, createdAt: { gte: new Date(now.getTime() - 61 * 86_400_000) } },
+      select: { createdAt: true },
+    }),
   ]);
 
   const moneyTxs: MoneyTx[] = [
@@ -75,5 +84,6 @@ export async function getLogContext(user: {
     accounts: accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency, kind: a.kind })),
     bucketRemaining,
     monthIncome: snap.income,
+    streak: loggingStreak(recorded.map((r) => r.createdAt), now),
   };
 }

@@ -164,6 +164,25 @@ for (const [label, viewport] of [
   });
 }
 
+test("the phone keypad types an amount, and an expense over the bucket offers only the recorded exception", async ({ page }) => {
+  await signedInUser(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/income");
+  await page.getByRole("button", { name: "Log transaction" }).first().click();
+  const dialog = page.getByRole("dialog");
+  const pad = dialog.getByRole("group", { name: "Number pad" });
+  for (const k of ["2", "0", "0", "0", "0", "0"]) await pad.getByRole("button", { name: k, exact: true }).click();
+  await pad.getByRole("button", { name: "Delete last digit" }).click();
+  await expect(dialog.getByLabel("Amount")).toHaveValue("20000");
+  await dialog.getByRole("button", { name: /^Save/ }).click();
+  // Blocked at zero: what is available against what was asked, then the explicit exception, never a silent save
+  await expect(dialog.getByRole("alert")).toContainText("does not cover");
+  await expect(dialog.getByRole("group", { name: "Fund the missing amount from another bucket" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Record with this exception" })).toBeDisabled();
+  const saved = await (await page.request.get("/api/export")).json();
+  expect(saved.transactions.filter((t: { type: string }) => t.type === "expense")).toHaveLength(0);
+});
+
 for (const path of ["/accounts", "/trends", "/imports", "/settings", "/dashboard", "/expenses"]) {
   test(`${path} fits a phone and its controls have names`, async ({ page }) => {
     await signedInUser(page);
