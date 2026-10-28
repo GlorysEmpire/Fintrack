@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatMoney } from "@fintrack/domain";
 import { formatExact } from "@/lib/money-format";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { ConnectionView } from "@/lib/bank/connections";
@@ -42,6 +43,15 @@ export function ImportsManager({
   const [externalId, setExternalId] = useState("");
   const [accountId, setAccountId] = useState("");
   const [bucketFor, setBucketFor] = useState<Record<string, string>>({});
+  // A bank transaction bigger than its bucket: the user may approve funding the shortfall from another bucket
+  const [exception, setException] = useState<{
+    importId: string;
+    short: number;
+    options: { bucketId: string; name: string; available: number; protected: boolean }[];
+  } | null>(null);
+  const [fundBucket, setFundBucket] = useState("");
+  const [fundReason, setFundReason] = useState("");
+  const [fundConfirm, setFundConfirm] = useState(false);
 
   async function call(scope: string, url: string, method: string, body?: unknown): Promise<Record<string, unknown> | null> {
     setError(null);
@@ -60,6 +70,37 @@ export function ImportsManager({
     } catch (e) {
       setError({ scope, text: e instanceof Error ? e.message : "Something went wrong." });
       return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function accept(importId: string, fundFrom?: { bucketId: string; reason: string }) {
+    setError(null);
+    setNotice(null);
+    setBusy(importId);
+    try {
+      const res = await fetch(`/api/bank/imports/${importId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "accept", bucketId: bucketFor[importId] || null, ...(fundFrom ? { fundFrom } : {}) }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        if (data.blocked && data.shortfall?.options?.length > 0) {
+          setException({ importId, short: data.shortfall.short, options: data.shortfall.options });
+          setFundBucket((data.shortfall.options.find((o: { protected: boolean }) => !o.protected) ?? data.shortfall.options[0]).bucketId);
+          setFundReason("");
+          setFundConfirm(false);
+        } else {
+          setException(null);
+        }
+        throw new Error(data.error || "Something went wrong.");
+      }
+      setException(null);
+      router.refresh();
+    } catch (e) {
+      setError({ scope: importId, text: e instanceof Error ? e.message : "Something went wrong." });
     } finally {
       setBusy(null);
     }
@@ -254,7 +295,7 @@ export function ImportsManager({
                         type="button"
                         className="btn btn-primary"
                         disabled={busy === i.id || (!credit && buckets.length > 0 && !bucketFor[i.id])}
-                        onClick={() => void call(i.id, `/api/bank/imports/${i.id}`, "POST", { action: "accept", bucketId: bucketFor[i.id] || null })}
+                        onClick={() => void accept(i.id)}
                       >
                         Record it
                       </button>
@@ -268,6 +309,39 @@ export function ImportsManager({
                 </div>
               )}
               {error?.scope === i.id && <div className="error" role="alert" style={{ marginTop: 10 }}>{error.text}</div>}
+
+              {exception?.importId === i.id && (
+                <div className="card" style={{ marginTop: 10 }} role="group" aria-label="Fund the missing amount from another bucket">
+                  <strong>The bucket is short by {formatMoney(exception.short, "NGN")}.</strong>
+                  <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                    This already happened at your bank, so it can be recorded, but only by funding exactly the shortfall
+                    from another bucket. That is a deliberate change to your plan, recorded with your reason.
+                  </p>
+                  <label className="mlbl" htmlFor={`fund-bucket-${i.id}`}>Fund it from</label>
+                  <select id={`fund-bucket-${i.id}`} className="minp" value={fundBucket} onChange={(e) => setFundBucket(e.target.value)}>
+                    {exception.options.map((o) => (
+                      <option key={o.bucketId} value={o.bucketId}>
+                        {o.name} ({formatMoney(o.available, "NGN")} available){o.protected ? " · protected bucket" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="mlbl" htmlFor={`fund-reason-${i.id}`}>Why? (required)</label>
+                  <input id={`fund-reason-${i.id}`} className="minp" maxLength={500} value={fundReason} onChange={(e) => setFundReason(e.target.value)} />
+                  <label style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "flex-start" }}>
+                    <input type="checkbox" checked={fundConfirm} onChange={(e) => setFundConfirm(e.target.checked)} />
+                    <span>I understand this moves money between my buckets and is recorded as a change to my plan.</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ marginTop: 10 }}
+                    disabled={busy === i.id || !fundConfirm || fundReason.trim().length < 3}
+                    onClick={() => void accept(i.id, { bucketId: fundBucket, reason: fundReason.trim() })}
+                  >
+                    Record with this exception
+                  </button>
+                </div>
+              )}
             </div>
           );
         })

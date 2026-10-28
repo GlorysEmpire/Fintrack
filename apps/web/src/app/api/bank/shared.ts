@@ -24,6 +24,7 @@ export const importActionSchema = z.discriminatedUnion("action", [
       category: id.optional().nullable(),
       sourceId: id.optional().nullable(),
       note: z.string().max(500).optional().nullable(),
+      fundFrom: z.object({ bucketId: id, reason: z.string().max(500) }).strict().optional(),
     })
     .strict(),
   z.object({ action: z.literal("match"), transactionId: id }).strict(),

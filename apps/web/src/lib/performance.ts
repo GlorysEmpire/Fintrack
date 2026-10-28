@@ -20,6 +20,7 @@ import {
   type PerfTx,
 } from "@fintrack/domain";
 import { prisma } from "./db";
+import { reallocationTxs } from "./reallocations";
 import { parseFx } from "./money";
 import { getUserPlan } from "./plan";
 
@@ -83,7 +84,7 @@ export async function getPerformance(
     prisma.transaction.count({ where: { userId: user.id, accountId: null } }),
   ]);
 
-  const txs: PerfTx[] = rows.map((t) => ({
+  const txs: PerfTx[] = [...rows.map((t) => ({
     type: t.type as "i" | "e",
     amount: t.amount,
     currency: t.currency,
@@ -91,7 +92,7 @@ export async function getPerformance(
     sourceId: t.sourceId,
     date: t.date,
     override: t.override,
-  }));
+  })), ...(await reallocationTxs(user.id))];
 
   const ledgerTransfers = transfers.map((t) => ({
     fromAccountId: t.fromAccountId,

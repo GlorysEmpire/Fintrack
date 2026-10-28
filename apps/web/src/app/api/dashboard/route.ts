@@ -12,6 +12,7 @@ import {
 } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { reallocationTxs } from "@/lib/reallocations";
 import { getUserPlan } from "@/lib/plan";
 import { parseFx, parseOpeningBalances } from "@/lib/money";
 import { ensureMonthPacked } from "@/lib/month-close";
@@ -51,14 +52,14 @@ export async function GET() {
     }),
   ]);
 
-  const moneyTxs: MoneyTx[] = monthRows.map((t) => ({
+  const moneyTxs: MoneyTx[] = [...monthRows.map((t) => ({
     type: t.type as "i" | "e",
     amount: t.amount,
     currency: t.currency,
     bucketId: t.bucketId,
     sourceId: t.sourceId,
     date: t.date,
-  }));
+  })), ...(await reallocationTxs(user.id, { since: startOfMonth() }))];
   const monthTxs = filterMonthTxs(moneyTxs);
   const snap = monthSnapshot(plan, monthTxs, user.baseCurrency, fx, opening);
 

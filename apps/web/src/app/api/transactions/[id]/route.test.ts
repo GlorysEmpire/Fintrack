@@ -167,11 +167,13 @@ describe("editing and the bucket limit", () => {
     expect(res.status).toBe(422);
     const data = await res.json();
     expect(data.blocked).toBe(true);
-    expect(data.shortfall).toEqual({
+    expect(data.shortfall).toMatchObject({
       bucketId: "spend",
       bucketName: "Spend",
       available: 8_100,
       requested: 9_000,
+      short: 900,
+      options: [], // an edit can not take an exception: record the expense again instead
     });
     expect(data.error).toBe(
       "Spend has ₦8,100 available. That does not cover ₦9,000. Nothing was changed."

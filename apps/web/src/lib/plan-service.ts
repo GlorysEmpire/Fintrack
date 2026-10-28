@@ -27,6 +27,7 @@ import {
   type PlanIssue,
 } from "@fintrack/domain";
 import { prisma } from "./db";
+import { reallocationTxs } from "./reallocations";
 import { parseFx } from "./money";
 import { ensureMonthPacked } from "./month-close";
 import { getBucketUsage, parsePlan, writePlan } from "./plan";
@@ -98,14 +99,14 @@ export async function proposePlanChange(
       },
     });
     if (rows.length > 0 && !input.confirmHistoryChange) {
-      const txs: MoneyTx[] = rows.map((t) => ({
+      const txs: MoneyTx[] = [...rows.map((t) => ({
         type: t.type as "i" | "e",
         amount: t.amount,
         currency: t.currency,
         bucketId: t.bucketId,
         sourceId: t.sourceId,
         date: t.date,
-      }));
+      })), ...(await reallocationTxs(user.id))];
       return {
         status: "needs_confirmation",
         warnings: check.warnings,

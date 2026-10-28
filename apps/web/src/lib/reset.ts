@@ -88,9 +88,11 @@ export async function getResetPreview(userIdInput: string): Promise<ResetCounts>
 export async function resetFinancialData(userIdInput: string): Promise<ResetCounts> {
   const userId = requireUserId(userIdInput);
 
-  const [importedTransactions, transfers, , transactions, recurringRules, incomeSources, inboxMessages, aiMessages, accounts, bankConnections, plans] =
+  const [, importedTransactions, transfers, , transactions, recurringRules, incomeSources, inboxMessages, aiMessages, accounts, bankConnections, plans] =
     await prisma.$transaction([
       // Money that points at accounts goes before the accounts themselves
+      // Approved bucket exceptions belong to their expenses; they go first
+      prisma.reallocation.deleteMany({ where: { userId } }),
       prisma.importedTransaction.deleteMany({ where: { userId } }),
       prisma.transfer.deleteMany({ where: { userId } }),
       prisma.accountAdjustment.deleteMany({ where: { userId } }),

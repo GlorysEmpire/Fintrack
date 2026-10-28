@@ -98,6 +98,15 @@ describe("deriveInsights", () => {
     assert.deepEqual(ids(base({ months: [month("2026-08"), month("2026-09", { bucketsBelowZero: 2 })] })), ["buckets-below-zero"]);
   });
 
+  it("mentions approved exceptions, with what moved", () => {
+    assert.deepEqual(ids(base({ exceptionsThisMonth: { count: 0, totalMoved: 0 } })), []);
+    const [one] = deriveInsights(base({ exceptionsThisMonth: { count: 1, totalMoved: 900 } }));
+    assert.equal(one.id, "exceptions-this-month");
+    assert.equal(one.severity, "info");
+    assert.deepEqual(one.evidence, ["Approved exceptions: 1", "Moved between buckets: ₦900"]);
+    assert.equal(deriveInsights(base({ exceptionsThisMonth: { count: 3, totalMoved: 5_000 } }))[0].severity, "attention");
+  });
+
   it("surfaces things waiting on the user", () => {
     assert.deepEqual(ids(base({ pendingImports: 2, changedImports: 1, rulesWithProblems: 1 })), ["imports-changed", "recurring-problems", "imports-to-review"]);
   });

@@ -39,6 +39,13 @@ type Source = {
   currency: string;
 };
 
+type Shortfall = {
+  bucketName: string;
+  /** Base currency */
+  short: number;
+  options: { bucketId: string; name: string; available: number; protected: boolean }[];
+};
+
 export type AccountOption = {
   id: string;
   name: string;
@@ -90,6 +97,11 @@ export function LogTransactionModal({
   const [category, setCategory] = useState("food");
   const [note, setNote] = useState("");
   const [accountId, setAccountId] = useState("");
+  // An expense bigger than its bucket: the user may approve funding the shortfall from another bucket
+  const [shortfall, setShortfall] = useState<Shortfall | null>(null);
+  const [fundBucket, setFundBucket] = useState("");
+  const [fundReason, setFundReason] = useState("");
+  const [fundConfirm, setFundConfirm] = useState(false);
   const [dateKey, setDateKey] = useState("");
   const [todayKey, setTodayKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -134,6 +146,7 @@ export function LogTransactionModal({
     setCategory("food");
     setNote("");
     setAccountId("");
+    setShortfall(null);
     setDateKey(today);
   }, [open, editing, base, sources, plan]);
 
@@ -229,7 +242,7 @@ export function LogTransactionModal({
 
   const editWindow = editing ? transactionLockState(editing.createdAt) : null;
 
-  async function save() {
+  async function save(fundFrom?: { bucketId: string; reason: string }) {
     setError(null);
     setLoading(true);
     try {
@@ -239,8 +252,10 @@ export function LogTransactionModal({
         throw new Error("Pick a bucket for this expense.");
       }
 
-      // Blocked at zero. The server checks this again (and for other months).
-      if (blockedHere) {
+      // Blocked at zero. An edit stops here. A NEW expense still goes to the
+      // server, which answers with the shortfall and the buckets that could
+      // fund it, so the user can approve an explicit exception.
+      if (blockedHere && isEdit) {
         throw new Error(
           `${shortfallText} ${isEdit ? "Nothing was changed." : "Nothing was recorded."}`
         );
@@ -279,6 +294,7 @@ export function LogTransactionModal({
         payload.reason = cross ? note.trim() : null;
       }
 
+      if (fundFrom) payload.fundFrom = fundFrom;
       const res = await fetch(
         isEdit ? `/api/transactions/${editing!.id}` : "/api/transactions",
         {
@@ -289,7 +305,20 @@ export function LogTransactionModal({
       );
       const data = await res.json();
 
-      if (!data.ok) throw new Error(data.error || "Failed to save");
+      if (!data.ok) {
+        // Refused because the bucket can not cover it: offer the explicit exception (new expenses only)
+        if (data.blocked && data.shortfall?.options?.length > 0 && !isEdit) {
+          setShortfall(data.shortfall as Shortfall);
+          // Prefer a bucket that is not a protected, carry-over one
+          setFundBucket((data.shortfall.options.find((o: { protected: boolean }) => !o.protected) ?? data.shortfall.options[0]).bucketId);
+          setFundReason("");
+          setFundConfirm(false);
+        } else {
+          setShortfall(null);
+        }
+        throw new Error(data.error || "Failed to save");
+      }
+      setShortfall(null);
 
       onClose();
       toast(isEdit ? "Changes saved" : "Transaction saved");
@@ -674,6 +703,62 @@ export function LogTransactionModal({
             {error && (
               <div className="error" role="alert">
                 {error}
+              </div>
+            )}
+
+            {shortfall && (
+              <div className="card" style={{ marginTop: 12 }} role="group" aria-label="Fund the missing amount from another bucket">
+                <strong>
+                  {shortfall.bucketName} is short by {formatMoney(shortfall.short, base)}.
+                </strong>
+                <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>
+                  You can fund exactly that amount from another bucket. This is a deliberate change to your plan: it
+                  is recorded, with your reason, and shows as a deviation. Nothing is saved until you confirm.
+                </p>
+                <label className="mlbl" htmlFor="fund-bucket">
+                  Fund it from
+                </label>
+                <select id="fund-bucket" className="minp" value={fundBucket} onChange={(e) => setFundBucket(e.target.value)}>
+                  {shortfall.options.map((o) => (
+                    <option key={o.bucketId} value={o.bucketId}>
+                      {o.name} ({formatMoney(o.available, base)} available){o.protected ? " · protected bucket" : ""}
+                    </option>
+                  ))}
+                </select>
+                {shortfall.options.find((o) => o.bucketId === fundBucket)?.protected && (
+                  <p className="error" role="status" style={{ marginTop: 6 }}>
+                    This bucket builds up over time (it carries over). Taking from it sets back money you were
+                    saving. Be sure.
+                  </p>
+                )}
+                <label className="mlbl" htmlFor="fund-reason">
+                  Why? (required)
+                </label>
+                <input
+                  id="fund-reason"
+                  className="minp"
+                  maxLength={500}
+                  placeholder="e.g. Car repair could not wait"
+                  value={fundReason}
+                  onChange={(e) => setFundReason(e.target.value)}
+                />
+                <label style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "flex-start" }}>
+                  <input type="checkbox" checked={fundConfirm} onChange={(e) => setFundConfirm(e.target.checked)} />
+                  <span>
+                    I understand this moves {formatMoney(shortfall.short, base)} from my{" "}
+                    {shortfall.options.find((o) => o.bucketId === fundBucket)?.name ?? "other"} bucket and is recorded
+                    as a change to my plan.
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ marginTop: 10 }}
+                  disabled={loading || !fundConfirm || fundReason.trim().length < 3}
+                  onClick={() => save({ bucketId: fundBucket, reason: fundReason.trim() })}
+                >
+                  Record with this exception
+                </button>
               </div>
             )}
 

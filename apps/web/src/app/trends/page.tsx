@@ -7,6 +7,8 @@ import { redirect } from "next/navigation";
 import { formatMoney, type CurrencyCode, type MonthPerformance } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { getStewardView } from "@/lib/steward";
+import { listDeviations } from "@/lib/reallocations";
+import { getUserPlan } from "@/lib/plan";
 import { formatExact } from "@/lib/money-format";
 import { unreadCount } from "@/lib/inbox";
 import { AppShell } from "@/components/AppShell";
@@ -32,7 +34,13 @@ export default async function TrendsPage() {
   if (!user) redirect("/login");
   if (user.onboarding === "pending") redirect("/onboarding");
 
-  const [steward, inboxUnread] = await Promise.all([getStewardView(user), unreadCount(user.id)]);
+  const [steward, inboxUnread, deviations, plan] = await Promise.all([
+    getStewardView(user),
+    unreadCount(user.id),
+    listDeviations(user.id, 50),
+    getUserPlan(user.id),
+  ]);
+  const bucketName = (id: string) => plan?.buckets.find((b) => b.id === id)?.name ?? id;
   const view = steward.performance;
   const insights = steward.insights;
   const base = view.baseCurrency as CurrencyCode;
@@ -133,6 +141,36 @@ export default async function TrendsPage() {
               </table>
             </div>
           </div>
+
+          {deviations.length > 0 && (
+            <>
+              <div className="sec">Plan deviations</div>
+              <div className="card">
+                <p className="muted" style={{ fontSize: 13 }}>
+                  Times an expense was bigger than its bucket and you approved funding the shortfall from another
+                  bucket. Each is recorded with your reason.
+                </p>
+                <ul style={{ marginTop: 8, paddingLeft: 18, display: "grid", gap: 10 }}>
+                  {deviations.map((d) => (
+                    <li key={d.id}>
+                      <strong>
+                        {formatExact(d.amount, d.currency)} moved from {bucketName(d.fromBucketId)} to {bucketName(d.toBucketId)}
+                      </strong>{" "}
+                      <span className="muted">on {d.date}</span>
+                      {d.fromProtected && <span className="muted"> · from a protected bucket</span>}
+                      <div className="muted" style={{ fontSize: 13 }}>
+                        Funded{" "}
+                        {d.expenseAmount !== null && d.expenseCurrency
+                          ? `a ${formatExact(d.expenseAmount, d.expenseCurrency)} expense${d.expenseNote ? ` (${d.expenseNote})` : ""}`
+                          : "an expense"}
+                        . Your reason: &ldquo;{d.reason}&rdquo;
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
 
           <div className="sec">Month by month</div>
           <div className="card" style={{ overflowX: "auto" }}>

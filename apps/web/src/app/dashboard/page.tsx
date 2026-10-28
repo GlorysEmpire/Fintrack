@@ -14,6 +14,7 @@ import {
 } from "@fintrack/domain";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { reallocationTxs } from "@/lib/reallocations";
 import { unreadCount } from "@/lib/inbox";
 import { getUserPlan } from "@/lib/plan";
 import { parseFx, parseOpeningBalances } from "@/lib/money";
@@ -60,14 +61,14 @@ export default async function DashboardPage() {
     }),
   ]);
 
-  const moneyTxs: MoneyTx[] = allTxs.map((t) => ({
+  const moneyTxs: MoneyTx[] = [...allTxs.map((t) => ({
     type: t.type as "i" | "e",
     amount: t.amount,
     currency: t.currency,
     bucketId: t.bucketId,
     sourceId: t.sourceId,
     date: t.date,
-  }));
+  })), ...(await reallocationTxs(user.id))];
   const monthTxs = filterMonthTxs(moneyTxs);
   const snap = monthSnapshot(plan, monthTxs, user.baseCurrency, fx, opening);
   // Actual financial reality across ALL history (income − expenses), not a

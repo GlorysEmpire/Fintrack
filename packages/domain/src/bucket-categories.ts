@@ -53,7 +53,6 @@ export const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 export const BUCKET_ALLOWED_CATEGORIES: Record<string, string[]> = {
   spend: [
     "food",
-    "transport",
     "outings",
     "shopping",
     "health",
@@ -63,6 +62,8 @@ export const BUCKET_ALLOWED_CATEGORIES: Record<string, string[]> = {
     "other",
   ],
   save: [
+    // Commuting is a cost of earning, so it is not a personal expense
+    "transport",
     "bills",
     "subscriptions",
     "debt_payment",
@@ -92,7 +93,7 @@ export const BUCKET_ALLOWED_CATEGORIES: Record<string, string[]> = {
 
 export const BUCKET_DESCRIPTIONS: Record<string, string> = {
   spend: "Personal daily expenses and shopping for yourself",
-  save: "Recurring bills, debts, projects, subscriptions, household supplies",
+  save: "Transport and commuting, recurring bills, debts, projects, subscriptions, household supplies",
   give: "Church offering, helping others, family support",
   invest: "Business expenses and investments that generate income",
   emergency: "Long-term safe haven assets only (real estate, gold, etc.)",

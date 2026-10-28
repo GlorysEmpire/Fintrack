@@ -55,6 +55,7 @@ model User {
   accountAdjustments   AccountAdjustment[]
   bankConnections      BankConnection[]
   importedTransactions ImportedTransaction[]
+  reallocations        Reallocation[]
   householdMemberships HouseholdMember[]
   /// JSON string of FX rates (NGN-denominated)
   fxRates              String                @default("{\"NGN\":1,\"USD\":1580,\"GBP\":1990,\"EUR\":1710}")
@@ -225,6 +226,8 @@ model Transaction {
   /// The bank import this transaction was created from (set in the same write
   /// that creates it). Unique, so one import can never become two transactions.
   importId        String?        @unique
+  /// Set when this expense needed more than its bucket held and was funded from another bucket
+  reallocation    Reallocation?
   /// When it happened (the user may file a transaction under an earlier day)
   date            DateTime       @default(now())
   /// When it was recorded. Starts the edit window; never set by the client.
@@ -434,4 +437,34 @@ model ImportedTransaction {
   @@unique([connectionId, externalId])
   @@index([userId, review])
   @@index([accountId])
+}
+
+// An approved exception: an expense needed more than its bucket held, and the
+// user chose, confirmed and explained where the extra money came from. It
+// exists ONLY together with that expense (one-to-one, and deleting the expense
+// deletes it), so buckets can never be topped up without a real expense behind
+// it. It moves money between buckets; it is never income and never spending.
+model Reallocation {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The expense this funded
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  /// The bucket that gave the money
+  fromBucketId  String
+  /// The bucket that received it (the expense's own bucket)
+  toBucketId    String
+  /// Minor units, in `currency` (the user's base currency when it was approved)
+  amountMinor   BigInt
+  currency      String
+  /// The day the expense is dated: the bucket maths replays it in that month
+  date          DateTime
+  /// The user's own words, required
+  reason        String
+  /// Whether the source bucket was a protected (carry-over) one, kept for the audit trail
+  fromProtected Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  @@index([userId, date])
 }

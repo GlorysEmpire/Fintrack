@@ -118,6 +118,8 @@ export type AcceptInput = {
   category?: string | null;
   sourceId?: string | null;
   note?: string | null;
+  /** Approve an exception for an expense its bucket can not cover */
+  fundFrom?: { bucketId: string; reason: string };
 };
 
 export async function acceptImport(
@@ -161,6 +163,7 @@ export async function acceptImport(
         date: dateKeyInTimeZone(imp.occurredAt, APP_TIME_ZONE),
         accountId: imp.accountId,
         importId: imp.id,
+        fundFrom: input.fundFrom,
       },
       now
     );

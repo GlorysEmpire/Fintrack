@@ -382,6 +382,27 @@ describe("reviewing: accept, match, ignore", () => {
     expect((await imports(user.id))[0].review).toBe("new");
   });
 
+  it("a bank transaction bigger than its bucket can be recorded only by an approved exception, once", async () => {
+    const { user, sessionUser, connection } = await setup([bankTx("big", -900_000)]); // ₦9,000 against ₦8,100
+    await syncConnection(connection.id, NOW);
+    const [row] = await imports(user.id);
+
+    const refused = await acceptImport(sessionUser, row.id, { bucketId: "spend", category: "food" }, NOW);
+    expect(refused).toMatchObject({ status: "blocked", shortfall: { short: 900 } });
+    expect((refused as { shortfall: { options: unknown[] } }).shortfall.options.length).toBeGreaterThan(0);
+
+    const approved = await acceptImport(sessionUser, row.id, { bucketId: "spend", category: "food", fundFrom: { bucketId: "save", reason: "It already left my account" } }, NOW);
+    expect(approved).toEqual({ status: "ok" });
+    const moves = await testDb.reallocation.findMany({ where: { userId: user.id } });
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toMatchObject({ fromBucketId: "save", toBucketId: "spend", reason: "It already left my account" });
+    expect(Number(moves[0].amountMinor)).toBe(90_000);
+    // accepting again records nothing more
+    expect(await acceptImport(sessionUser, row.id, { bucketId: "spend", category: "food" }, NOW)).toEqual({ status: "ok" });
+    expect(await testDb.reallocation.count({ where: { userId: user.id } })).toBe(1);
+    expect(await testDb.transaction.count({ where: { userId: user.id, importId: row.id } })).toBe(1);
+  });
+
   it("needs a bucket for an expense when there is a plan, but not for income", async () => {
     const { user, sessionUser, connection } = await setup([bankTx("out", -100_00), bankTx("in", 300_000)]);
     await syncConnection(connection.id, NOW);

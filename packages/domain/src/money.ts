@@ -14,10 +14,18 @@ import {
 
 /** Minimal transaction shape from the DB layer */
 export interface MoneyTx {
-  type: "i" | "e";
+  /**
+   * "i" income, "e" expense, "m" a bucket-to-bucket move approved to fund an
+   * expense (bucketId = the bucket that RECEIVES, fromBucketId = the one that
+   * gives). "m" is never income or spending: every total ignores it, and only
+   * the bucket maths reads it.
+   */
+  type: "i" | "e" | "m";
   amount: number;
   currency: string;
   bucketId?: string | null;
+  /** Only for type "m": the bucket the money came from */
+  fromBucketId?: string | null;
   sourceId?: string | null;
   date: Date | string;
 }
@@ -127,6 +135,22 @@ export function sumExpenses(
     .reduce((s, t) => s + amountInBase(t.amount, t.currency, base, fx), 0);
 }
 
+/** Net money moved into (+) and out of (-) each bucket by approved exceptions (base currency) */
+export function movedByBucket(
+  txs: MoneyTx[],
+  base: string,
+  fx: Record<string, number>
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const t of txs) {
+    if (t.type !== "m" || !t.bucketId || !t.fromBucketId) continue;
+    const amount = amountInBase(t.amount, t.currency, base, fx);
+    out[t.bucketId] = (out[t.bucketId] || 0) + amount;
+    out[t.fromBucketId] = (out[t.fromBucketId] || 0) - amount;
+  }
+  return out;
+}
+
 /** Spend per bucket id this month (base currency) */
 export function spentByBucket(
   txs: MoneyTx[],
@@ -221,7 +245,7 @@ function replayMonths(
     const monthTxs = byMonth.get(key) ?? [];
     const income = sumIncome(monthTxs, base, fx);
     const spent = spentByBucket(monthTxs, base, fx);
-    states = monthBucketStates(income, plan, spent, openings);
+    states = monthBucketStates(income, plan, spent, openings, movedByBucket(monthTxs, base, fx));
     onMonth?.(key, states);
     openings = nextOpeningBalances(states);
   }
@@ -320,6 +344,7 @@ export function allTimeBucketStates(
         opening: 0,
         allocated: 0,
         spent: 0,
+        moved: 0,
         closing: 0,
         carryOver: b.carryOver,
       }));
@@ -369,7 +394,13 @@ export function monthSnapshot(
   }
   const waterfall = allocateWaterfall(income, plan);
   const spent = spentByBucket(monthTxs, base, fx);
-  const buckets = monthBucketStates(income, plan, spent, openingBalances);
+  const buckets = monthBucketStates(
+    income,
+    plan,
+    spent,
+    openingBalances,
+    movedByBucket(monthTxs, base, fx)
+  );
   return {
     income,
     expenses,

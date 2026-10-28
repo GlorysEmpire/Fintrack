@@ -505,6 +505,14 @@ export class FakeDb {
     [["connectionId", "externalId"], ["transactionId"]]
   );
 
+  reallocation = new Table(
+    "reallocation",
+    () => ({ id: newId(), fromProtected: false, createdAt: new Date() }),
+    [],
+    this,
+    [["transactionId"]]
+  );
+
   private get tables(): Table[] {
     return [
       this.user,
@@ -521,6 +529,7 @@ export class FakeDb {
       this.accountAdjustment,
       this.bankConnection,
       this.importedTransaction,
+      this.reallocation,
     ];
   }
 

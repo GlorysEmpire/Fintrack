@@ -29,6 +29,8 @@ export const createTransactionSchema = z
     reason: shortText.optional().nullable(),
     date: day.optional().nullable(),
     accountId: id.optional().nullable(),
+    /** Approve an exception: fund the shortfall from another bucket, with a reason */
+    fundFrom: z.object({ bucketId: id, reason: shortText }).strict().optional(),
   })
   .strict();
 

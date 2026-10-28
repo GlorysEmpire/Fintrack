@@ -20,6 +20,7 @@ import {
   MONEY_EPSILON,
   amountInBase,
   dateKeyInTimeZone,
+  bucketAvailableOn,
   expenseFriction,
   formatMoney,
   isCrossBucket,
@@ -30,8 +31,10 @@ import {
   type ExpenseFriction,
   type MoneyTx,
 } from "@fintrack/domain";
+import { randomUUID } from "node:crypto";
 import { checkAccountForEvent } from "./accounts";
 import { prisma } from "./db";
+import { reallocationTxs } from "./reallocations";
 import { APP_TIME_ZONE } from "./format-date";
 import { createOverrideInboxMessage } from "./inbox";
 import { parseFx } from "./money";
@@ -63,6 +66,11 @@ export type NewTransactionInput = {
    */
   recurring?: { ruleId: string; occurrenceDate: Date };
   /**
+   * Approve an exception: fund what this expense is short by from another
+   * bucket. Only ever used after the user was shown the shortfall and chose.
+   */
+  fundFrom?: FundFrom;
+  /**
    * Set only by the bank-import review: the import this transaction is created
    * from. Unique in the database, so one import can never become two transactions.
    */
@@ -80,7 +88,14 @@ export type BucketShortfall = {
   available: number;
   /** What the expense asked for (base currency) */
   requested: number;
+  /** How much is missing (base currency): what an approved exception would have to fund */
+  short: number;
+  /** Other buckets that could fund exactly that shortfall, for the user to choose from */
+  options: { bucketId: string; name: string; available: number; protected: boolean }[];
 };
+
+/** The user's explicit decision to fund a shortfall from another bucket */
+export type FundFrom = { bucketId: string; reason: string };
 
 export type TransactionResult =
   | { status: "ok"; transaction: Transaction; crossBucket: boolean }
@@ -105,6 +120,7 @@ function invalid(error: string, extra: { crossBucket?: boolean } = {}) {
 
 /** The user's whole history as the domain reads it, optionally leaving one row out. */
 async function loadHistory(userId: string, exceptId?: string): Promise<MoneyTx[]> {
+  const moves = await reallocationTxs(userId);
   const rows = await prisma.transaction.findMany({
     where: { userId },
     select: {
@@ -117,16 +133,19 @@ async function loadHistory(userId: string, exceptId?: string): Promise<MoneyTx[]
       date: true,
     },
   });
-  return rows
-    .filter((t) => t.id !== exceptId)
-    .map((t) => ({
-      type: t.type as "i" | "e",
-      amount: t.amount,
-      currency: t.currency,
-      bucketId: t.bucketId,
-      sourceId: t.sourceId,
-      date: t.date,
-    }));
+  return [
+    ...rows
+      .filter((t) => t.id !== exceptId)
+      .map((t) => ({
+        type: t.type as "i" | "e",
+        amount: t.amount,
+        currency: t.currency,
+        bucketId: t.bucketId,
+        sourceId: t.sourceId,
+        date: t.date,
+      })),
+    ...moves,
+  ];
 }
 
 async function ownsSource(userId: string, sourceId: string): Promise<boolean> {
@@ -149,6 +168,14 @@ export type ExpenseCheck =
       cross: boolean;
       /** null when the money side was not re-checked (an edit that did not touch it) */
       friction: ExpenseFriction | null;
+      /** An approved exception funding the shortfall, when the user chose one */
+      reallocation: {
+        fromBucketId: string;
+        toBucketId: string;
+        amountBase: number;
+        reason: string;
+        fromProtected: boolean;
+      } | null;
     };
 
 /**
@@ -165,6 +192,7 @@ export async function checkExpense(
     note: string;
     reason: string;
     date: Date;
+    fundFrom?: FundFrom;
   },
   opts: {
     now: Date;
@@ -191,6 +219,7 @@ export async function checkExpense(
       reason: want.reason,
       cross: false,
       friction: null,
+      reallocation: null,
     };
   }
 
@@ -255,6 +284,58 @@ export async function checkExpense(
 
     // Blocked at zero: the bucket does not hold what was asked for.
     if (friction.blocked && !onlyLowers) {
+      const history = await loadHistory(user.id, previous?.id);
+      const short = Math.max(0, amountBase - Math.max(0, friction.remaining));
+      const candidates = plan.buckets
+        .filter((b) => !b.archived && b.id !== bucket.id)
+        .map((b) => ({
+          bucketId: b.id,
+          name: b.name,
+          protected: b.carryOver,
+          available: Math.max(
+            0,
+            bucketAvailableOn(history, plan, user.baseCurrency, parseFx(user.fxRates), b.id, want.date, opts.now)
+          ),
+        }));
+      const options = candidates.filter((c) => c.available + MONEY_EPSILON >= short);
+
+      // The user already chose where the extra money comes from: check that choice
+      if (want.fundFrom && !previous) {
+        const source = candidates.find((c) => c.bucketId === want.fundFrom!.bucketId);
+        const reason = want.fundFrom.reason.trim();
+        if (!source) {
+          return { ok: false, result: invalid("Pick another bucket in your plan to fund this.") };
+        }
+        if (reason.length < 3) {
+          return { ok: false, result: invalid("Write why you are funding this from another bucket.") };
+        }
+        if (source.available + MONEY_EPSILON < short) {
+          return {
+            ok: false,
+            result: invalid(
+              `${source.name} has ${formatMoney(source.available, user.baseCurrency as CurrencyCode)} available, which does not cover the ${formatMoney(short, user.baseCurrency as CurrencyCode)} that is missing. Nothing was recorded.`
+            ),
+          };
+        }
+        return {
+          ok: true,
+          bucketId: bucket.id,
+          bucketName: bucket.name,
+          category: want.category,
+          note: want.note,
+          reason: want.reason || (cross ? want.note : ""),
+          cross,
+          friction,
+          reallocation: {
+            fromBucketId: source.bucketId,
+            toBucketId: bucket.id,
+            amountBase: short,
+            reason,
+            fromProtected: source.protected,
+          },
+        };
+      }
+
       return {
         ok: false,
         result: {
@@ -269,6 +350,9 @@ export async function checkExpense(
             bucketName: bucket.name,
             available: Math.max(0, friction.remaining),
             requested: amountBase,
+            short,
+            // An edit can not take an exception: record it again instead
+            options: previous ? [] : options,
           },
         },
       };
@@ -284,6 +368,7 @@ export async function checkExpense(
     reason: want.reason || (cross ? want.note : ""),
     cross,
     friction,
+    reallocation: null,
   };
 }
 
@@ -387,13 +472,16 @@ async function createUnlocked(
       note: clean(input.note),
       reason: clean(input.reason),
       date: when.date,
+      fundFrom: input.fundFrom,
     },
     { now, moneyChanged: true }
   );
   if (!check.ok) return check.result;
 
-  const transaction = await prisma.transaction.create({
+  const id = randomUUID();
+  const expenseData = {
     data: {
+      id,
       userId: user.id,
       type: "e",
       amount: input.amount,
@@ -409,7 +497,32 @@ async function createUnlocked(
       recurringRuleId: input.recurring?.ruleId ?? null,
       occurrenceDate: input.recurring?.occurrenceDate ?? null,
     },
-  });
+  };
+
+  let transaction: Transaction;
+  if (check.reallocation) {
+    // The expense and the exception that funds it are saved together, or not at all
+    const r = check.reallocation;
+    const [created] = (await prisma.$transaction([
+      prisma.transaction.create(expenseData),
+      prisma.reallocation.create({
+        data: {
+          userId: user.id,
+          transactionId: id,
+          fromBucketId: r.fromBucketId,
+          toBucketId: r.toBucketId,
+          amountMinor: BigInt(Math.round(r.amountBase * 100)),
+          currency: user.baseCurrency,
+          date: when.date,
+          reason: r.reason,
+          fromProtected: r.fromProtected,
+        },
+      }),
+    ])) as [Transaction, unknown];
+    transaction = created;
+  } else {
+    transaction = await prisma.transaction.create(expenseData);
+  }
 
   await writeOverrideNote(user, transaction, check, false);
   return { status: "ok", transaction, crossBucket: check.cross };
@@ -444,6 +557,28 @@ async function updateUnlocked(
       error: LOCKED_EXPLANATION,
       editableUntil: lock.editableUntil.toISOString(),
     };
+  }
+
+  // An expense funded by an approved exception keeps its amount, bucket and
+  // day: they are what the exception was approved for. Delete it and record it
+  // again to change them.
+  const changesMoney =
+    (patch.amount !== undefined && patch.amount !== existing.amount) ||
+    (patch.currency !== undefined && patch.currency !== existing.currency) ||
+    (patch.bucketId !== undefined && (patch.bucketId || null) !== existing.bucketId) ||
+    (patch.date != null &&
+      patch.date !== "" &&
+      patch.date !== dateKeyInTimeZone(existing.date, APP_TIME_ZONE));
+  if (changesMoney) {
+    const funded = await prisma.reallocation.findFirst({
+      where: { transactionId: existing.id, userId: user.id },
+      select: { id: true },
+    });
+    if (funded) {
+      return invalid(
+        "This expense was funded by an approved exception, so its amount, bucket and day can not change. Delete it and record it again."
+      );
+    }
   }
 
   // The day only changes if the user picked a different one; otherwise the
@@ -557,6 +692,9 @@ export async function deleteTransaction(
   // A bank import that became (or was matched to) this transaction goes back to
   // the review queue, so the bank's record is not lost with it.
   await prisma.$transaction([
+    prisma.reallocation.deleteMany({
+      where: { userId: user.id, transactionId: existing.id },
+    }),
     prisma.importedTransaction.updateMany({
       where: { userId: user.id, transactionId: existing.id },
       data: { review: "new", transactionId: null },

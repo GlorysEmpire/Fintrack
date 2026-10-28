@@ -4,6 +4,7 @@
  * and compare to "month we are in now".
  */
 import { prisma } from "./db";
+import { reallocationTxs } from "./reallocations";
 import {
   monthKeyOf,
   openingBalancesForMonth,
@@ -72,14 +73,14 @@ export async function ensureMonthPacked(
   const pastTxs = await prisma.transaction.findMany({
     where: { userId, date: { lt: currentStart } },
   });
-  const moneyTxs: MoneyTx[] = pastTxs.map((t) => ({
+  const moneyTxs: MoneyTx[] = [...pastTxs.map((t) => ({
     type: t.type as "i" | "e",
     amount: t.amount,
     currency: t.currency,
     bucketId: t.bucketId,
     sourceId: t.sourceId,
     date: t.date,
-  }));
+  })), ...(await reallocationTxs(userId, { before: currentStart }))];
 
   const plan = parsePlan(planRow);
   const fx = parseFx(user.fxRates);

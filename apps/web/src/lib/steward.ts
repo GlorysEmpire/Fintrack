@@ -22,6 +22,7 @@ import {
 import { listAccounts } from "./accounts";
 import { listImports } from "./bank/review";
 import { prisma } from "./db";
+import { reallocationTxs } from "./reallocations";
 import { ensureMonthPacked } from "./month-close";
 import { parseFx, parseOpeningBalances } from "./money";
 import { getPerformance, type PerformanceView } from "./performance";
@@ -72,14 +73,15 @@ export async function getStewardView(
       prisma.recurringRule.findMany({ where: { userId: user.id, active: true } }),
     ]);
 
-  const moneyTxs: MoneyTx[] = monthRows.map((t) => ({
+  const moneyTxs: MoneyTx[] = [...monthRows.map((t) => ({
     type: t.type as "i" | "e",
     amount: t.amount,
     currency: t.currency,
     bucketId: t.bucketId,
     sourceId: t.sourceId,
     date: t.date,
-  }));
+  })), ...(await reallocationTxs(user.id, { since: startOfMonth(now) }))];
+  const moves = moneyTxs.filter((t) => t.type === "m");
   const opening = planRow ? parseOpeningBalances(planRow.openingBalancesJson) : {};
   const snap = monthSnapshot(plan, filterMonthTxs(moneyTxs, now), user.baseCurrency, fx, opening);
   const nameOf = (id: string) => plan?.buckets.find((b) => b.id === id)?.name || id;
@@ -90,7 +92,7 @@ export async function getStewardView(
   );
   const longBucketLines = snap.buckets.map(
     (b) =>
-      `- ${nameOf(b.bucketId)}: available ${money(b.opening + b.allocated)}, spent ${money(b.spent)}, left ${money(b.closing)}${b.carryOver ? " (carry-over)" : ""}`
+      `- ${nameOf(b.bucketId)}: available ${money(b.opening + b.allocated + b.moved)}, spent ${money(b.spent)}, left ${money(b.closing)}${b.carryOver ? " (carry-over)" : ""}`
   );
 
   const insights = deriveInsights({
@@ -100,7 +102,7 @@ export async function getStewardView(
     trend: performance.trend,
     buckets: snap.buckets.map((b) => ({
       name: nameOf(b.bucketId),
-      available: b.opening + b.allocated,
+      available: b.opening + b.allocated + b.moved,
       spent: b.spent,
       closing: b.closing,
     })),
@@ -119,6 +121,10 @@ export async function getStewardView(
     changedImports: imports.filter((i) => i.attention).length,
     rulesWithProblems: rules.filter((r) => r.lastError).length,
     crossBucketThisMonth: monthRows.filter((t) => t.type === "e" && t.override).length,
+    exceptionsThisMonth: {
+      count: moves.length,
+      totalMoved: moves.reduce((sum, m) => sum + m.amount, 0),
+    },
   });
 
   const exact = (n: number, ccy: string) =>

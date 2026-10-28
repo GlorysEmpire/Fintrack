@@ -202,12 +202,16 @@ describe("POST /api/transactions — a bucket is blocked at zero", () => {
     const data = await res.json();
     expect(data.ok).toBe(false);
     expect(data.blocked).toBe(true);
-    expect(data.shortfall).toEqual({
+    expect(data.shortfall).toMatchObject({
       bucketId: "spend",
       bucketName: "Spend",
       available: 8_100,
       requested: 10_000,
+      short: 1_900,
     });
+    // The user is offered the buckets that could fund exactly that shortfall (as data, never in the sentence)
+    expect(data.shortfall.options.length).toBeGreaterThan(0);
+    expect(data.shortfall.options.every((o: { available: number; bucketId: string }) => o.available >= 1_900 && o.bucketId !== "spend")).toBe(true);
     // It says what is available against what was asked for…
     expect(data.error).toBe(
       "Spend has ₦8,100 available. That does not cover ₦10,000. Nothing was recorded."

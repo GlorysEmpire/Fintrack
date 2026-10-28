@@ -22,7 +22,7 @@ const day = (d: Date) => dateKeyInTimeZone(d, APP_TIME_ZONE);
 const money = (minor: bigint | number) => minorToDecimal(Number(minor));
 
 export async function buildExport(userId: string, now: Date = new Date()) {
-  const [user, planRow, accounts, transactions, transfers, adjustments, sources, rules, connections, imports] =
+  const [user, planRow, accounts, transactions, transfers, adjustments, sources, rules, connections, imports, reallocations] =
     await Promise.all([
       prisma.user.findUnique({ where: { id: userId } }),
       prisma.budgetPlan.findUnique({ where: { userId } }),
@@ -34,6 +34,7 @@ export async function buildExport(userId: string, now: Date = new Date()) {
       prisma.recurringRule.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
       prisma.bankConnection.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
       prisma.importedTransaction.findMany({ where: { userId }, orderBy: { occurredAt: "asc" } }),
+      prisma.reallocation.findMany({ where: { userId }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] }),
     ]);
   if (!user) throw new Error("No such user");
 
@@ -120,6 +121,20 @@ export async function buildExport(userId: string, now: Date = new Date()) {
       bucketId: r.bucketId,
       accountId: r.accountId,
       note: r.note,
+    })),
+    /** Approved exceptions: an expense funded from another bucket, and why */
+    reallocations: reallocations.map((r) => ({
+      id: r.id,
+      date: day(r.date),
+      transactionId: r.transactionId,
+      fromBucketId: r.fromBucketId,
+      fromBucket: bucketName.get(r.fromBucketId) ?? null,
+      toBucketId: r.toBucketId,
+      toBucket: bucketName.get(r.toBucketId) ?? null,
+      amount: money(r.amountMinor),
+      currency: r.currency,
+      fromProtectedBucket: r.fromProtected,
+      reason: r.reason,
     })),
     bankConnections: connections.map((c) => ({
       id: c.id,

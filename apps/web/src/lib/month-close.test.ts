@@ -22,6 +22,7 @@ vi.mock("@/lib/db", () => ({
     },
     user: { findUnique: (...args: unknown[]) => userFindUnique(...args) },
     transaction: { findMany: (...args: unknown[]) => txFindMany(...args) },
+    reallocation: { findMany: async () => [] },
   },
 }));
 

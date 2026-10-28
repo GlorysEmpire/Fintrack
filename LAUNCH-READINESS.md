@@ -17,12 +17,13 @@ What is verified, what is not, and what to do before and after each deploy.
 
 ## 2. Migrations
 
-All four recent migrations are **additive only**; none rewrites or drops existing data:
+All five recent migrations are **additive only**; none rewrites or drops existing data:
 
 1. `20261027120000_recurring_occurrences`: occurrence key on transactions, run status on rules.
 2. `20261027140000_accounts_and_transfers`: accounts, transfers, adjustments.
 3. `20261027160000_transfer_fee_expense`: links a transfer's fee expense to the transfer.
 4. `20261027180000_bank_import_groundwork`: bank connections and imports.
+5. `20261028120000_bucket_reallocations`: approved bucket exceptions (one table, tied one-to-one to the expense it funded). **Not yet applied to production**: it applies on the next deploy.
 
 Before any deploy that includes a migration:
 - Take a Neon snapshot or branch (the restore point). There is no automatic undo.

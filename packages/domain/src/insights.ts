@@ -49,6 +49,8 @@ export interface InsightInput {
   rulesWithProblems: number;
   /** Cross-bucket spends this month */
   crossBucketThisMonth: number;
+  /** Expenses this month funded from another bucket by an approved exception, and the total moved (base currency) */
+  exceptionsThisMonth?: { count: number; totalMoved: number };
 }
 
 /** Spending this far above the same days last month is worth a mention */
@@ -206,6 +208,19 @@ export function deriveInsights(input: InsightInput): Insight[] {
       title: "Some buckets ended last month below zero",
       detail: "That happens when history is recalculated, for example after a plan change or a corrected income.",
       evidence: [`${lastFinished.month}: ${lastFinished.bucketsBelowZero} bucket(s) below zero`],
+    });
+  }
+
+  // 7b. Approved exceptions: where extra money came from, so it is never quiet
+  if (input.exceptionsThisMonth && input.exceptionsThisMonth.count > 0) {
+    const n = input.exceptionsThisMonth.count;
+    out.push({
+      id: "exceptions-this-month",
+      severity: n >= 2 ? "attention" : "info",
+      title: n === 1 ? "An expense this month was funded from another bucket" : `${n} expenses this month were funded from other buckets`,
+      detail: "Each was your approved decision, and each is recorded with your reason. They change what your plan really did.",
+      evidence: [`Approved exceptions: ${n}`, `Moved between buckets: ${money(input.exceptionsThisMonth.totalMoved)}`],
+      next: "Open Trends and look at Plan deviations.",
     });
   }
 

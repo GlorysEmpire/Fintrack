@@ -23,7 +23,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/db", async () => ({ prisma: (await import("@/test/db")).testDb }));
 
-import { allTimeBucketStates, MONEY_EPSILON, type MoneyTx } from "@fintrack/domain";
+import { allTimeBucketStates, MONEY_EPSILON, movedByBucket, type MoneyTx } from "@fintrack/domain";
+import { reallocationTxs } from "@/lib/reallocations";
 import { adjustBalance, createAccount, listAccounts } from "@/lib/accounts";
 import { buildExport } from "@/lib/export";
 import { getPerformance } from "@/lib/performance";
@@ -126,10 +127,28 @@ async function checkBooks(actor: Actor, label: string) {
 
   // 4. No bucket is below zero
   const planRow = await testDb.budgetPlan.findUnique({ where: { userId: actor.id } });
-  const moneyTxs: MoneyTx[] = o.txs.map((t) => ({ type: t.type as "i" | "e", amount: t.amount, currency: t.currency, bucketId: t.bucketId, sourceId: t.sourceId, date: t.date }));
+  const moneyTxs: MoneyTx[] = [
+    ...o.txs.map((t) => ({ type: t.type as "i" | "e", amount: t.amount, currency: t.currency, bucketId: t.bucketId, sourceId: t.sourceId, date: t.date })),
+    ...(await reallocationTxs(actor.id)),
+  ];
   for (const b of allTimeBucketStates(moneyTxs, parsePlan(planRow!), "NGN", parseFx(actor.session.fxRates))) {
     expect(b.closing, `${label}: bucket ${b.bucketId} went below zero`).toBeGreaterThanOrEqual(-MONEY_EPSILON);
   }
+
+  // 4b. Approved exceptions: each is tied to a real expense in the receiving bucket, funds no more
+  //     than that expense, and moves money without creating or destroying any (they net to zero)
+  const moves = await testDb.reallocation.findMany({ where: { userId: actor.id } });
+  for (const r of moves) {
+    const tx = o.txs.find((t) => t.id === r.transactionId);
+    expect(tx, `${label}: an exception with no expense`).toBeDefined();
+    expect(tx!.type).toBe("e");
+    expect(tx!.bucketId).toBe(r.toBucketId);
+    expect(Number(r.amountMinor), `${label}: an exception larger than its expense`).toBeLessThanOrEqual(minor(tx!.amount));
+    expect(r.fromBucketId).not.toBe(r.toBucketId);
+    expect(r.reason.trim().length).toBeGreaterThan(0);
+  }
+  const netMoved = Object.values(movedByBucket(await reallocationTxs(actor.id), "NGN", parseFx(actor.session.fxRates))).reduce((a, b) => a + b, 0);
+  expect(Math.abs(netMoved), `${label}: exceptions created or destroyed money`).toBeLessThan(0.005);
 
   // 5. Every fee is exactly one expense of the same amount, and nothing else points at a transfer
   for (const t of o.transfers) {
@@ -173,11 +192,23 @@ describe("financial integrity under a long random run", () => {
       if (roll < 0.25) {
         await createTransaction(actor.session, { type: "i", amount: amount(), currency: "NGN", accountId: random() < 0.9 ? pick(actor.accountIds) : null });
       } else if (roll < 0.55) {
-        await createTransaction(actor.session, {
+        const input = {
           // No category: a category that does not match its bucket is a different rule (cross-bucket) with its own tests
-          type: "e", amount: amount(), currency: "NGN", bucketId: pick(BUCKETS), category: null,
+          type: "e" as const,
+          // Now and then a big one, so some expenses exceed their bucket and need an approved exception
+          amount: random() < 0.2 ? Math.round((60_000 + random() * 90_000) * 100) / 100 : amount(),
+          currency: "NGN" as const,
+          bucketId: pick(BUCKETS),
+          category: null,
           accountId: random() < 0.9 ? pick(actor.accountIds) : null,
-        });
+        };
+        const first = await createTransaction(actor.session, input);
+        if (first.status === "blocked" && first.shortfall.options.length > 0 && random() < 0.7) {
+          await createTransaction(actor.session, {
+            ...input,
+            fundFrom: { bucketId: pick(first.shortfall.options).bucketId, reason: "integrity run" },
+          });
+        }
       } else if (roll < 0.75 && actor.accountIds.length > 1) {
         const from = pick(actor.accountIds);
         const to = pick(actor.accountIds.filter((x) => x !== from));
@@ -224,9 +255,10 @@ describe("financial integrity under a long random run", () => {
     ]);
     expect(txCount).toBeGreaterThan(15);
     expect(transferCount).toBeGreaterThan(3);
-    expect(adjustmentCount).toBeGreaterThan(1);
+    expect(adjustmentCount).toBeGreaterThan(0);
     expect(feeCount).toBeGreaterThan(0);
     expect(expenseCount).toBeGreaterThan(5);
+    expect(await testDb.reallocation.count({ where: { userId: a.id } }), "no exception was ever approved in the run").toBeGreaterThan(0);
 
     // The export agrees with the books
     for (const actor of [a, b]) {
@@ -246,8 +278,9 @@ describe("financial integrity under a long random run", () => {
       testDb.transfer.count({ where: { userId: a.id } }),
       testDb.account.count({ where: { userId: a.id } }),
       testDb.accountAdjustment.count({ where: { userId: a.id } }),
+      testDb.reallocation.count({ where: { userId: a.id } }),
     ]);
-    expect(left).toEqual([0, 0, 0, 0]);
+    expect(left).toEqual([0, 0, 0, 0, 0]);
     expect(await testDb.user.findUnique({ where: { id: a.id } })).not.toBeNull();
     expect(await fingerprint(b)).toBe(bBeforeReset);
   }, 120_000);

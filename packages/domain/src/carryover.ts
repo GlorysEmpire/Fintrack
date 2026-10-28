@@ -21,7 +21,13 @@ export interface MonthBucketState {
   allocated: number;
   /** Expenses drawn from this bucket this month */
   spent: number;
-  /** opening + allocated - spent */
+  /**
+   * Money moved into (+) or out of (-) this bucket this month by an approved
+   * exception: an expense that needed more than its bucket held, funded from
+   * another bucket on the user's explicit say-so. Zero in a normal month.
+   */
+  moved: number;
+  /** opening + allocated + moved - spent */
   closing: number;
   carryOver: boolean;
 }
@@ -34,18 +40,21 @@ export function monthBucketStates(
   grossIncome: number,
   plan: BudgetPlan,
   spentByBucket: Record<string, number>,
-  openingBalances: Record<string, number> = {}
+  openingBalances: Record<string, number> = {},
+  movedByBucket: Record<string, number> = {}
 ): MonthBucketState[] {
   const w = allocateWaterfall(grossIncome, plan);
   return w.lines.map((line) => {
     const opening = line.carryOver ? openingBalances[line.bucketId] || 0 : 0;
     const spent = spentByBucket[line.bucketId] || 0;
-    const closing = opening + line.allocated - spent;
+    const moved = movedByBucket[line.bucketId] || 0;
+    const closing = opening + line.allocated + moved - spent;
     return {
       bucketId: line.bucketId,
       opening,
       allocated: line.allocated,
       spent,
+      moved,
       closing,
       carryOver: line.carryOver,
     };
