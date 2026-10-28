@@ -47,6 +47,20 @@ export function AdvisorClient({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  async function clearChat() {
+    if (loading) return;
+    if (!window.confirm("Delete this whole conversation with Steward? This can not be undone.")) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/ai/chat", { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed");
+      setMessages([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
   async function send(text: string) {
     const msg = text.trim();
     if (!msg || loading) return;
@@ -93,6 +107,15 @@ export function AdvisorClient({
             · Offline coach (set XAI_API_KEY for full Steward)
           </span>
         )}
+      </p>
+
+      <p className="sub" style={{ fontSize: 12 }}>
+        Privacy: when you ask a question, a summary of your plan and figures is sent to our AI
+        provider (xAI) to write the answer. Your name and email are not included. Steward
+        can not change your data.{" "}
+        <button type="button" className="chip" onClick={clearChat} disabled={loading}>
+          Delete this conversation
+        </button>
       </p>
 
       <div style={{ marginBottom: 14 }}>

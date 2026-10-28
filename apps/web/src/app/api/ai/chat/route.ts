@@ -11,6 +11,7 @@ import { getSessionUser } from "@/lib/auth";
 import { askSteward, hasXaiKey } from "@/lib/ai";
 import { prisma } from "@/lib/db";
 import { getStewardView } from "@/lib/steward";
+import { retryAfterSeconds, stewardDayLimiter, stewardMinuteLimiter } from "@/lib/rate-limit";
 
 const schema = z.object({
   message: z.string().min(1).max(2000),
@@ -20,6 +21,24 @@ export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Every message is a paid AI call: cap them per user (a stolen session or a
+  // script can not run up the bill). The daily check runs first so a refused
+  // message does not use up the per-minute allowance.
+  const perDay = await stewardDayLimiter.limit(user.id);
+  if (!perDay.success) {
+    return NextResponse.json(
+      { ok: false, error: "You have reached today's limit of Steward messages. Try again tomorrow." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(perDay)) } }
+    );
+  }
+  const perMinute = await stewardMinuteLimiter.limit(user.id);
+  if (!perMinute.success) {
+    return NextResponse.json(
+      { ok: false, error: "That was a lot of messages at once. Wait a moment and try again." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(perMinute)) } }
+    );
   }
 
   try {
@@ -91,4 +110,14 @@ export async function GET() {
     messages: newest.reverse(),
     liveAi: hasXaiKey(),
   });
+}
+
+/** DELETE: clear the user's whole Steward conversation (their data, their call) */
+export async function DELETE() {
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  const { count } = await prisma.aiMessage.deleteMany({ where: { userId: user.id } });
+  return NextResponse.json({ ok: true, deleted: count });
 }

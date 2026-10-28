@@ -72,7 +72,7 @@ export async function askSteward(opts: {
     return {
       reply:
         offlineAdvisorReply(opts.userMessage, opts.offlineCtx) +
-        "\n\n(Guided mode for now — full online Steward coming soon.)",
+        "\n\n(The online Steward could not be reached just now, so this is the guided answer. Try again in a moment.)",
       mode: "offline",
     };
   }

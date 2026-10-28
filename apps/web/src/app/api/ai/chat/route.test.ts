@@ -16,7 +16,7 @@ vi.mock("@/lib/ai", async (importOriginal) => ({
 }));
 
 import { cleanup, createUser, jsonRequest, seedTx, signIn, testDb } from "@/test/harness";
-import { GET, POST } from "./route";
+import { DELETE, GET, POST } from "./route";
 
 afterEach(() => {
   askSteward.mockReset();
@@ -177,5 +177,40 @@ describe("the guided (offline) Steward", () => {
     });
     expect(reply).toContain("What stands out right now");
     expect(reply).toContain("GTBank is below zero");
+  });
+});
+
+describe("Steward cost and privacy guards", () => {
+  it("refuses the 9th message inside a minute, with a polite error and Retry-After", async () => {
+    const user = await createUser();
+    signIn(user);
+    askSteward.mockResolvedValue({ reply: "ok", mode: "offline" });
+    for (let i = 0; i < 8; i++) {
+      expect((await POST(jsonRequest("POST", { message: `q${i}` }))).status).toBe(200);
+    }
+    const res = await POST(jsonRequest("POST", { message: "one too many" }));
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    expect((await res.json()).ok).toBe(false);
+    // the refused message never reached the model or the history
+    expect(askSteward).toHaveBeenCalledTimes(8);
+    expect(await testDb.aiMessage.count({ where: { userId: user.id } })).toBe(16);
+  });
+
+  it("DELETE clears only the signed-in user's conversation", async () => {
+    const mine = await createUser();
+    const other = await createUser();
+    await seedConversation(mine.id, 6);
+    await seedConversation(other.id, 4);
+    signIn(mine);
+    const res = await DELETE();
+    expect((await res.json()).deleted).toBe(6);
+    expect(await testDb.aiMessage.count({ where: { userId: mine.id } })).toBe(0);
+    expect(await testDb.aiMessage.count({ where: { userId: other.id } })).toBe(4);
+  });
+
+  it("DELETE needs a signed-in user", async () => {
+    signIn(null);
+    expect((await DELETE()).status).toBe(401);
   });
 });

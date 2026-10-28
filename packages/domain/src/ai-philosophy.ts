@@ -64,7 +64,7 @@ ${userContextBlock}
 
 /** Shown at the end of offline coach replies — user-facing, never mentions API keys */
 const OFFLINE_FOOTER =
-  "\n\n— FinTrack Steward (guided mode). Full online Steward coming soon.";
+  "\n\n— FinTrack Steward (guided mode)";
 
 /**
  * Offline / no-API-key fallback: rule-based "advisor" so the product still works.

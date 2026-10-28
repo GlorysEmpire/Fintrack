@@ -161,6 +161,12 @@ export const exportUserLimiter = makeLimiter(
   "ft:export:user"
 );
 
+/** 8 Steward messages per user per minute (each one is a paid AI call) */
+export const stewardMinuteLimiter = makeLimiter(8, "1 m", 60 * 1000, "ft:steward:min");
+
+/** 80 Steward messages per user per day: a hard ceiling on the AI bill */
+export const stewardDayLimiter = makeLimiter(80, "1 d", 24 * 60 * 60 * 1000, "ft:steward:day");
+
 /** Client IP from reverse-proxy headers (Vercel / similar). */
 export function clientIp(req: Request): string {
   const xff = req.headers.get("x-forwarded-for");
